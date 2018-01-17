@@ -1,87 +1,42 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.8.0
+; Script Version: 50.0.9.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
 ;
-;  Modifications - AU - 07/08/2017 - 50.0.8.0
+;  Modifications - AU - 2018-01-17 - 50.0.9.0
+;	* Efficiency improvements to do with NAK handling
+;	* New setting s_WaitTime which controls how long before we send after receiving
+;
+;  Modifications - AU - 2017-11-15 - 50.0.8.0
 ;	* Changed VIP Codes to skip if the code is not a valid entry on the MiVB
 ;
-;  Modifications - AU - 07/08/2017 - 50.0.7.0
+;  Modifications - AU - 2017-08-07 - 50.0.7.0
 ;	* Removed CHK0 from Checkin commands so we send less messages to the Mitel
 ;
-;  Modifications - AU - 24/04/2017 - 50.0.6.0
+;  Modifications - AU - 2017-04-24 - 50.0.6.0
 ;	* Improved VIP codes
 ;
-;  Modifications - AU - 08/03/2017 - 50.0.5.0
+;  Modifications - AU - 2017-03-08 - 50.0.5.0
 ;	* Added s_RSTUseSource to skip any logic and simply send the RST code we received
 ;	  from the PMS if enabled
 ;
-;  Modifications - AU - 25/06/2015 - 50.0.4.0
+;  Modifications - AU - 2016-08-04 - 50.0.4.0
 ;	* Added the ability to customise the Extension Facility name used in Suite Services
 ;
-;  Modifications - AU - 25/06/2015 - 50.0.3.0
+;  Modifications - AU - 2015-06-25 - 50.0.3.0
 ;	* Added new option and support for VIP codes on Checkin, Update and Transfer
 ;
-;  Modifications - AU - 25/03/2015 - 50.0.2.0
+;  Modifications - AU - 2015-03-25 - 50.0.2.0
 ;	* Updated Extension Length setting to work on incoming records
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
-;  Modifications - AU - 19/03/2013
-;	* Added support for DND events with an option in the INIT
-;
-;  Modifications - AU - 05/10/2012
-;	* Modified SendRecord section to improve how we react after receiving a NAK
-;	* Modified s_UseRST to default to YES.  This will need to be changed to NO if the
-;	  PBX is older than a 3300.
-;
-;  Modifications - AU - 27/04/2012
-;	* Added an option in the INIT for Suite Services, it looks for an Extension
-;	  Facility of "Suite" and will ignore the record if it doesn't exist
-;
-;  Modifications - AU - 03/04/2012
-;	* Modified all labels so that we wait 15 seconds before sending after receiving
-;	* Modified CheckIncoming so we process an event if we get an STX without an ENQ
-;	* Modified ReceiveRecord to allow for the above
-;
-;  Modifications - AU - 10/02/2012
-;	* Modified PORT_OPENED so that after 20 seconds of sleeping we empty the
-;	  input buffer and act if it is an ENQ
-;	* Modified SendRecord so that if we receive a NAK, we sleep for 1.5 seconds,
-;	  empty the input buffer and then act if it is an ENQ
-;	* Updated to use _EV_NAMEDISPLAY in all labels
-;
-;  Modifications - AU - 02/02/2011
-;	* Complete overhaul of the script presentation
-;	* Added functionality to allow Extra Guests to be added to an Extension
-;	* Added an option for Add Extra Guests disaled by default
-;	* Brought settings in-line with other scripts by prefixing with s_
-;	* Removed redundant checks and comments
-;	* Modified RoomTransfer so that it will use RST commands if enabled
-;	* Modified FINISHEDRECEIVING to exit rather than return when finished
-;	* Modified default Unbar RST number to 2 from 3 as per the specification
-;	* Added missing event labels
-;
-;  Modifications - AU - 09/08/2010
-;	* Modified ReceiveRecord to clear down old incoming variables
-;	* Modified CreateRSEvents to only create an event if the in_Status
-;	  variable is not blank
-;	* Modified QUITRECEIVING to read SkipProcessIncoming in ReceiveRecord
-;
-;  Modifications - AU - 10/06/2010
-;	* Modified ReceiveRecord section to clear the old RecType
-;	* Modified s_Connection variable query entry in INIT
-;	* Removed redundant Extension Checks
-;	* Removed redundant defined variables
-;	* Added an echo in PORT_OPENED before the sleep 20000
-;	* Modified INIT for Serial connections
-;
 ; ************************************************************************
-;                     Copyright © 2013, TigerTMS Ltd.                     
+;                     Copyright Â© 2013, TigerTMS Ltd.                     
 ; ************************************************************************
 ;
 define SendRec
@@ -94,7 +49,8 @@ define ExtnLen
 define NameLen
 ;
 define f_LastChar
-define f_LastRec
+define f_LastSendRec
+define f_SendStatus
 ;
 define s_DoDND
 define s_DoExtraGuest
@@ -109,6 +65,7 @@ define s_RSTUseSource
 define s_Connection
 define s_SuiteServices
 define s_SuiteServicesFacility
+define s_WaitTime
 ;
 define in_Extension
 define in_Status
@@ -173,6 +130,10 @@ Assign s_SuiteServices "NO"
 ;      customise it below
 Assign s_SuiteServicesFacility "Suite"
 
+; OPT: Put the time in seconds we should wait before we should attemp to send after
+;      receiving a record
+Assign s_WaitTime "5"
+
 ; OPT: Choose either SERIAL or IP connection
 Assign s_Connection "IP"
 
@@ -208,7 +169,7 @@ Goto PORT_OPENED
 :PO_NoBuffer
 
 	if "$(f_LastChar)" EQ "<#5>"
-		StartWaitTimer2 15
+		StartWaitTimer2 $(s_WaitTime)
 	if "$(f_LastChar)" EQ "<#5>"
 		Echo Rx: <#5>
 	if "$(f_LastChar)" EQ "<#5>"
@@ -860,7 +821,7 @@ Goto READINGREC
 :SkipProcessIncoming
 
 	if "$(RecType)" NE "MW"
-		StartWaitTimer2 15
+		StartWaitTimer2 $(s_WaitTime)
 
 Exit
 ; ************************************************************************
@@ -944,16 +905,22 @@ Return
 ;   client.
 :SendRecord
 
+	if "$(f_LastSendRec)" EQ "$(SendRec)"
+		Return
+
+:SendRecord_Start
+
 	Assign f_LastChar ""
+	Assign f_SendStatus "ENQ"
 	Call SENDENQ
 
 	StartWaitTimer 10
 
 :WAITFORACKTOENQ
 
-	Sleep 200
+	Sleep 10
 
-	ReadFromPort 1 1
+	ReadFromPort 1
 
 	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
 		Goto SendRecord
@@ -969,13 +936,11 @@ Return
 
 //	If it's a NAK
 	if "$(_PORTCHARS)" EQ "<#21>"
-		Sleep 5000
-	if "$(_PORTCHARS)" EQ "<#21>"
 		Goto SendRecord_EmptyBuffer
 
 //	If it's an ENQ
 	if "$(_PORTCHARS)" EQ "<#5>"
-		StartWaitTimer2 5
+		StartWaitTimer2 $(s_WaitTime)
 	if "$(_PORTCHARS)" EQ "<#5>"
 		Call SendACK
 	if "$(_PORTCHARS)" EQ "<#5>"
@@ -985,6 +950,8 @@ Return
 
 :GOTACKTOENQ
 
+	Assign f_SendStatus "REC"
+
 	Send $(SendRec)
 	Echo Tx: $(SendRec)
 
@@ -992,7 +959,7 @@ Return
 
 :WAITFORACKTOREC
 
-	Sleep 200
+	Sleep 10
 
 	ReadFromPort 1
 
@@ -1001,8 +968,6 @@ Return
 
 //	If it's a NAK
 	if "$(_PORTCHARS)" EQ "<#21>"
-		Sleep 5000
-	if "$(_PORTCHARS)" EQ "<#21>"
 		Goto SendRecord_EmptyBuffer
 
 	if "$(_PORTCHARS)" EQ "<#6>"
@@ -1010,7 +975,7 @@ Return
 
 //	If it's an ENQ
 	if "$(_PORTCHARS)" EQ "<#5>"
-		StartWaitTimer2 5
+		StartWaitTimer2 $(s_WaitTime)
 	if "$(_PORTCHARS)" EQ "<#5>"
 		Call SendACK
 	if "$(_PORTCHARS)" EQ "<#5>"
@@ -1023,9 +988,15 @@ Return
 
 :GOTACKTOREC
 
+//	We got an ACK - save the last record we sent if it is not AREYUTHERE so we do not send duplicate records
+	if "$(SendRec)" NE "<#02>AREYUTHERE<#03>"
+		Assign f_LastSendRec "$(SendRec)"
+
 Return
 
 :SendRecord_EmptyBuffer
+
+	Sleep 10
 
 	ReadFromPort 1 1
 
@@ -1042,19 +1013,18 @@ Return
 		Echo Rx: $(f_LastChar)
 
 	if "$(f_LastChar)" EQ "<#5>"
-		StartWaitTimer2 5
+		StartWaitTimer2 $(s_WaitTime)
 	if "$(f_LastChar)" EQ "<#5>"
 		Call SendACK
 	if "$(f_LastChar)" EQ "<#5>"
 		Exit
 
-	Assign f_LastRec "$(SendRec)"
-	Assign SendRec "<#02>AREYUTHERE<#03>"
-	Call SendRecord
+	if "$(f_SendStatus)" EQ "ENQ"
+		Goto SendRecord_Start
+	if "$(f_SendStatus)" EQ "REC"
+		Goto GOTACKTOENQ
 
-	Assign SendRec "$(f_LastRec)"
-
-Goto SendRecord
+Return
 ; ************************************************************************
 
 
