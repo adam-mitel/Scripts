@@ -1,0 +1,510 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for passing directory information
+;  to a Conveyant TDNS running Host Interface.
+;
+;  This is currently a one way interface.
+;
+;                                                              pjh-140205
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 20/08/2012
+;	* Updated to use _EV_NAMEDISPLAY
+;	* Updated script presentation
+;	* Changed interface to Extension Based
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+	OpenPort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WK_SET
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto WK_CLEAR
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WK_CLEAR
+	if "$(_EV_WKACTION)" EQ "DELIVERED"
+		Goto WK_DELIVERED
+	if "$(_EV_WKACTION)" EQ "FAILED"
+		Goto WK_FAILED
+
+:WK_SET
+
+	Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"Pending <_EV_EVENTDATE:DATE:8:MM/DD/YY> <_EV_EVENTTIME:TIME:8:HH:MM:SS>\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	Goto WK_DONE
+
+:WK_CLEAR
+
+	Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\" \",\"Cancelled <_EV_EVENTDATE:DATE:8:MM/DD/YY> <_EV_EVENTTIME:TIME:8:HH:MM:SS>\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	Goto WK_DONE
+
+:WK_DELIVERED
+
+	Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\" \",\"Delivered <_EV_EVENTDATE:DATE:8:MM/DD/YY> <_EV_EVENTTIME:TIME:8:HH:MM:SS>\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	Goto WK_DONE
+
+:WK_FAILED
+
+	Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\" \",\"Failed <_EV_EVENTDATE:DATE:8:MM/DD/YY> <_EV_EVENTTIME:TIME:8:HH:MM:SS>\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	Goto WK_DONE
+
+:WK_DONE
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+//	Directory Layout is as follows:
+//	Guestname, Non-Reg Guest, Res Num, Room Num, Dial Num, Phone Num, Lookup Num, ChkInDate, ChkInTime,TollAccess, Pay Method, ChkOutDate, ChkOutTime, Wakeup_1, Wakeup_2, Wakeup_Inf, Color, Lang
+
+	Assign SendRec "\"E\",\"$(_EV_NAMEDISPLAY)\",\"\",\"0\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"$(_EV_EXTNNUMBER)\",\"$(_EV_EXTNNUMBER)\",\"$(_EV_EXTNNUMBER)\",\"<_EV_EVENTDATE:DATE:6:DDMMYY>\",\"<_EV_EVENTTIME:TIME:4:HHMM>\",\"1\",\"CC\",\" \",\" \",\" \",\" \",\" \",\"$(_EV_LANGCODE)\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+//	Directory Layout is as follows:
+//	Guestname, Non-Reg Guest, Res Num, Room Num, Dial Num, Phone Num, Lookup Num, ChkInDate, ChkInTime,TollAccess, Pay Method, ChkOutDate, ChkOutTime, Wakeup_1, Wakeup_Inf, Lang
+
+	Assign SendRec "\"D\",\"\",\"\",\"0\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"CC\",\"<_EV_EVENTDATE:DATE:6:DDMMYY>\",\"<_EV_EVENTTIME:TIME:4:HHMM>\",\"\",\"\",\"4\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"1\",\"\",\"\",\"\",\"\",\"\",\"\",\"\""
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign SendRec "\"E\",\"\",\"\",\"\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"0\",\"\",\"\",\"\",\"\",\"\",\"\",\"\""
+
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	Assign SendRec "\"E\",\"$(_EV_NAMEDISPLAY)\",\"\",\"0\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"CC\",\"\",\"\",\"\",\"\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	Assign SendRec "\"D\",\"\",\"\",\"0\",\"$(_EV_RESERVATION)\",\"$(_EV_ROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"CC\",\"<_EV_EVENTDATE:DATE:6:DDMMYY>\",\"<_EV_EVENTTIME:TIME:4:HHMM>\",\"\",\"\",\"4\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	Assign SendRec "\"E\",\"\",\"\",\"0\",\"$(_EV_RESERVATION)\",\"$(_EV_TRDESTROOMNUMBER)\",\"$(_EV_TRDESTEXTNNUMBER)\",\"$(_EV_TRDESTROOMNUMBER)\",\"$(_EV_TRDESTROOMNUMBER)\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\""
+	GenConveyantBCC "$(SendRec)"
+	Assign SendRec "$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+ReadFromPort 1
+
+If "$(_PORTCHARS)" NE ""
+Echo Rx: $(_PORTCHARS)
+
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Assign ReceiveRec ""
+
+	Echo Tx: $(SendRec)
+	Send $(SendRec)<#13>
+
+	StartWaitTimer 5
+
+:SendRecord_WaitForCR
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceiveRec "$(ReceiveRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto SendRecord_WaitForLF
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout waiting for CR1.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForCR
+
+:SendRecord_WaitForLF
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceiveRec "$(ReceiveRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto SendRecord_WaitForCR2
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout waiting for LF.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForLF
+
+:SendRecord_WaitForCR2
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceiveRec "$(ReceiveRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto SendRecord_Done
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForCR2
+
+:SendRecord_Done
+
+		Echo Rx: $(ReceiveRec)
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

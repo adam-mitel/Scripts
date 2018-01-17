@@ -1,0 +1,4151 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.4.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to any FIAS client.
+;
+;                                                             AU-20100201
+;
+;  Modifications - AU - 28/06/2017 - 50.0.4.0
+;	* Added option s_TransferCheckoutCheckin, default to FALSE
+;
+;  Modifications - AU - 26/05/2015 - 50.0.3.0
+;	* Added a Passthrough mode for outgoing events using GenericPassthrough
+;
+;  Modifications - AU - 15/04/2014 - 50.0.2.0
+;	* Added option s_IgnoreZeroBillPosting, default to FALSE
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 18/12/2012
+;	* Modified Room Transfer so we send GN, GT and GF
+;
+;  Modifications - AU - 16/10/2012
+;	* Added support to create Message Waiting commands from RE VM messages
+;
+;  Modifications - AU - 19/01/2012
+;	* Resolved issue where sometimes Checkin and Checkout messages would be ignored
+;	  during the link initiation.
+;	* Added an option s_RespondToLA to set whether we should respond to the Client's
+;	  periodic LinkAlive message
+;	* Added an option s_CheckinOnAddGuest to set whether we should send a Checkin on
+;	  Add Extra Guest regardless if the Client requested the GS field or not.
+;
+;  Modifications - AU - 10/10/2011
+;	* Modified all Sleep commands so they are only actioned if we are interfacing
+;	  via Serial.
+;	* Modified ReceiveRecord to increase the time out from 5 to 10 seconds.
+;
+;  Modifications - AU - 29/03/2011
+;	* Modified HandlePS so that if Combined Services are active we do not create
+;	  any postings where the Total Amount is 0.
+;
+;  Modifications - AU - 11/03/2011
+;	* Added Sleep before certain Return commands to assist with Serial connections.
+;	* Modified Combined Service sections.
+;
+;  Modifications - AU - 14/02/2011
+;	* Modified HandlePS to rearrange Posting Type T to the top.
+;	* Modified PeriodicCheck to send an LS if the link is not currently alive.
+;
+;  Modifications - AU - 28/01/2011
+;	* Modified ReceiveRecord and ReadLinkRecord labels to fix a problem with WaitTimers.
+;	* Modified the reading of BCC characters so we timeout if we don't receive one.
+;	* Modified Extra Guest to change to the specific _EV_ variables.
+;
+;  Modifications - AU - 12/01/2011
+;	* Added Sleep 100 in loop sequences within the script.
+;	* Modified RoomUpdate label to include a check for Update before checkout events.
+;
+;  Modifications - AU - 04/01/2011
+;	* Added support for Combined Services by modifying the following labels:
+;		- INIT
+;		- HandlePS
+;	* Added an option in the INIT to define whether Combined Services are Implemented.
+;
+;  Modifications - AU - 13/12/2010
+;	* Modified HandleXM and HandleXD Labels to include a sixth parameter.
+;	* Modified MessageWaiting label to use the sixth parameter.
+;
+;  Modifications - AU - 29/10/2010
+;	* Added an option in the INIT to set whether we want to use the Sales.
+;	  Outlet number in PS records as the Item Number.
+;	* Modified the f_DoLRC option from TRUE/FALSE to YES/NO.
+;	* Added support for GT, GF, TV, VR, MR and NP messages in GI and GC
+;	  records using additional CFG fields added to HI.
+;	* Removed RUSWAPFLAG from Room Update.
+;	* Removed formatting rules from Bill Response Bill Item values.
+;	* Added Reservation code to CreateBillEnquiry.
+;	* Resolved issue with Room Transfer room numbers being the wrong way around.
+;
+;  Modifications - AU - 24/09/2010
+;	* Added support for Database Swap messages with room numbers EEEE
+;	  and FFFF, these will need to be in the guest directory.
+;
+;  Modifications - AU - 19/08/2010
+;	* Set in_Quantity to 1 when clearing field data rather than blank.
+;	* Set in_ItemID to 9999 by default.
+;	* Modified incoming PS records to use the default ItemID and Quantity.
+;	* Added missing incoming variables in the clear down label.
+;	* Added support for incoming XD and XM messages.
+;	* Added support for outgoing XD, XT and XL messages.
+;	* Added support for incoming Room Status events.
+;	* Removed redundant system settings.
+;	* Added support for multiple Minibar postings in one PS record.
+;
+;  Modifications - AU - 28/07/2010
+;	* Resolved issue with Clear All Wakeups, where we send WR instead of WC.
+;	* Resolved issue where we were sending HHMM instead of HHMMSS
+;	  in Wakeup messages.
+;
+;  Modifications - AU - 21/07/2010
+;	* Resolved issue with processing PA in LinkRecords.
+;	* Added support for trunk number in incoming PS records.
+;	* Changed the way we parse records.
+;	* Changed the way we processed WA messages to highlight any unknown.
+;         statuses.
+;	* Changed whether we wait for an ACK after sending a record depending
+;	  on whether Serial is used rather than LRC characters being used.
+;	* Set in_TotalAmount to 0 when clearing fields rather than blank.
+;	* Modified HandlePS to Parse date, time and duration for telephone calls.
+;	* Resolved support for serial connections so we correctly ACK incoming
+;	  records.
+;	
+;  Modifications - AU - 25/05/2010
+;	* Added CT and P# support for Posting Answers
+;
+;  Modifications - AU - 24/05/2010
+;	* Added support for telephone posting types by sending the details to
+;	  Data Collection in the Enhanced Monarch format.
+;	* Modified Receive Link Record section so they're added to ReceivedRec.
+;	* Modified HandleLA to only send a LinkAlive if the link is not
+;	  currently alive.
+;	* Modified SHUTDOWN to call DoLE to send the Link End message.
+;	* Resolved typographical error in Receive sections with v_FieldID.
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+;
+define Date
+define Time
+;
+define f_Connection
+define f_DoLRC
+define f_GotPreviousMinibar
+define f_LinkAlive
+;	
+define v_FieldData
+define v_FieldID
+define v_LRField
+define v_LRType
+;
+define in_AnswerStatus
+define in_BillBalance
+define in_ClearText
+define in_Discount1
+define in_Date
+define in_DialledDigits
+define in_Duration
+define in_Reservation
+define in_Quantity
+define in_Item
+define in_MessageID
+define in_MessageText
+define in_MeterPulse
+define in_PostID
+define in_PostingRoute
+define in_PostingType
+define in_Room
+define in_RoomStatus
+define in_SubTotal1
+define in_ServiceCharge
+define in_SalesOutlet
+define in_Tax1
+define in_TotalAmount
+define in_Time
+define in_UserID
+define in_Voicemail
+;
+define s_CombinedServicesImplemented
+define s_SalesOutletIsID
+define s_RespondToLA
+define s_CheckinOnAddGuest
+define s_IgnoreZeroBillPosting
+define s_PassthroughMode
+define s_TransferCheckoutCheckin
+;
+define s_GI
+define s_GO
+define s_GC
+define s_RE
+define s_PA
+define s_WC
+define s_WR
+define s_WA
+define s_XL
+define s_XT
+define s_XD
+define s_XR
+define s_XI
+define s_XB
+define s_XC
+define s_GIDA
+define s_GITI
+define s_GIRN
+define s_GIGS
+define s_GIG#
+define s_GIGN
+define s_GIGF
+define s_GIGT
+define s_GIGA
+define s_GIGD
+define s_GIGV
+define s_GIGL
+define s_GIGG
+define s_GINP
+define s_GITV
+define s_GIVR
+define s_GIMR
+define s_GIA0
+define s_GIA1
+define s_GIA2
+define s_GIA3
+define s_GIA4
+define s_GIA5
+define s_GIA6
+define s_GIA7
+define s_GIA8
+define s_GIA9
+define s_GIEN
+define s_GIES
+define s_GIEP
+define s_GIWS
+define s_GISF
+define s_GODA
+define s_GOTI
+define s_GORN
+define s_GOGS
+define s_GOG#
+define s_GOEN
+define s_GOES
+define s_GOEP
+define s_GOWS
+define s_GOSF
+define s_GCDA
+define s_GCTI
+define s_GCRN
+define s_GCGS
+define s_GCG#
+define s_GCRO
+define s_GCGN
+define s_GCGF
+define s_GCGT
+define s_GCGA
+define s_GCGD
+define s_GCGV
+define s_GCGL
+define s_GCGG
+define s_GCNP
+define s_GCTV
+define s_GCVR
+define s_GCMR
+define s_GCA0
+define s_GCA1
+define s_GCA2
+define s_GCA3
+define s_GCA4
+define s_GCA5
+define s_GCA6
+define s_GCA7
+define s_GCA8
+define s_GCA9
+define s_GCEN
+define s_GCES
+define s_GCEP
+define s_GCEO
+define s_GCET
+define s_GCEI
+define s_GCWS
+define s_RERN
+define s_REG#
+define s_RECS
+define s_REDN
+define s_REML
+define s_REMR
+define s_RETV
+define s_PADA
+define s_PATI
+define s_PARN
+define s_PAAS
+define s_PAWS
+define s_PASO
+define s_PAP#
+define s_PACT
+define s_WRDA
+define s_WRTI
+define s_WRRN
+define s_WCDA
+define s_WCTI
+define s_WCRN
+define s_XBDA
+define s_XBTI
+define s_XBRN
+define s_XBG#
+define s_XBBA
+define s_XCDA
+define s_XCTI
+define s_XCRN
+define s_XCG#
+define s_XCBA
+define s_XCAS
+define s_XCCT
+define s_XDDA
+define s_XDTI
+define s_XDRN
+define s_XDG#
+define s_XDMI
+define s_XIDA
+define s_XITI
+define s_XIRN
+define s_XIG#
+define s_XIBD
+define s_XIBI
+define s_XIDC
+define s_XIF#
+define s_XIFD
+define s_XLDA
+define s_XLTI
+define s_XLRN
+define s_XLG#
+define s_XLMI
+define s_XLMT
+define s_XRDA
+define s_XRTI
+define s_XRRN
+define s_XRG#
+define s_XTDA
+define s_XTTI
+define s_XTRN
+define s_XTG#
+define s_XTMI
+define s_XTMT
+;
+; ************************************************************************
+;  INIT
+;   This label is executed by the program on start up.
+:INIT
+
+//	OPT: Define below whether the connection is "SERIAL" or "IP"
+	Assign f_Connection "IP"
+
+//	OPT: Define below whether we want to send an LRC Checksum
+//	     at the end of records
+	Assign f_DoLRC "NO"
+
+//	OPT: Define below whether Combined Services are Implemented
+//	     at this site
+	Assign s_CombinedServicesImplemented "NO"
+
+//	OPT: Define below whether we want to use the Sales Outlet number on
+//	     PS records as the Item number
+	Assign s_SalesOutletIsID "NO"
+
+//	OPT: Define below whether we should respond with a Link Alive to the
+//	     Clients periodic Link Alive messages
+	Assign s_RespondToLA "NO"
+
+//	OPT: Define below whether we should send a checkout then checkin message
+//	     instead of a GC record
+	Assign s_TransferCheckoutCheckin "NO"
+
+//	OPT: Define below whether we should checkin on Extra Guest regardless
+//	     of whether the Client has requested Share information or not
+	Assign s_CheckinOnAddGuest "NO"
+
+//	OPT: Define below whether we should ignore any postings which have a
+//	     Total Amount of 0
+	Assign s_IgnoreZeroBillPosting "NO"
+
+//	OPT: Set this to TRUE if we only want to send GenericPassthrough events
+	Assign s_PassthroughMode "NO"
+
+	if "$(f_Connection)" EQ "IP"
+		Exit
+
+	OpenPort
+	Sleep 2000
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;   This label is executed by the program when we have established an
+;   IP Connection.
+:PORT_OPENED
+
+	Assign f_LinkAlive "FALSE"
+
+	Call DoLS
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;   This label is executed by the program on shut down.
+:SHUTDOWN
+
+	Call DoLE
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(_EV_MWMESSAGETEXT)" EQ ""
+		Goto MW_RE
+
+	if "$(_EV_MWCFGFIELD_0)" EQ "XM"
+		Goto IgnoreRecord
+	if "$(_EV_MWCFGFIELD_0)" EQ "XD"
+		Goto MW_XD
+	if "$(_EV_MWCFGFIELD_0)" EQ "XT"
+		Goto MW_XT
+	if "$(_EV_MWCFGFIELD_0)" EQ "XL"
+		Goto MW_XL
+
+	Echo If: Unsupported _EV_MWACTION: "$(_EV_MWACTION)".
+	Goto IgnoreRecord
+
+:MW_RE
+
+	if "$(s_RE)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_REML)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending RE - ML events - Build the record
+	Assign SendRec "RE|"
+
+	if "$(s_RERN)" NE "TRUE"
+		Goto MW_RESkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:MW_RESkipRoomNumber
+
+	if "$(s_REG#)" NE "TRUE"
+		Goto MW_RESkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto MW_RESkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:MW_RESkipReservation
+
+	Assign WorkVal "N"
+	if "$(_EV_MWSTATE)" EQ "TRUE"
+		Assign WorkVal "Y"
+	Assign SendRec "$(SendRec)ML$(WorkVal)|"
+
+	Goto MW_Send
+
+:MW_XL
+
+	if "$(s_XL)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XL events - Build the record
+	Assign SendRec "XL|"
+
+	if "$(s_XLDA)" NE "TRUE"
+		Goto MW_XLSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_EVENTDATE:DATE:6:YYMMDD>|"
+
+:MW_XLSkipDate
+
+	if "$(s_XLTI)" NE "TRUE"
+		Goto MW_XLSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_EVENTTIME:TIME:6:HHMMSS>|"
+
+:MW_XLSkipTime
+
+	if "$(s_XLRN)" NE "TRUE"
+		Goto MW_XLSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:MW_XLSkipRoomNumber
+
+	if "$(s_XLG#)" NE "TRUE"
+		Goto MW_XLSkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto MW_XLSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:MW_XLSkipReservation
+
+	if "$(s_XLMI)" NE "TRUE"
+		Goto MW_XLSkipMessageID
+	if "$(_EV_MWMESSAGEID)" EQ ""
+		Goto MW_XLSkipMessageID
+
+	Assign SendRec "$(SendRec)MI$(_EV_MWMESSAGEID)|"
+
+:MW_XLSkipMessageID
+
+	if "$(s_XLMT)" NE "TRUE"
+		Goto MW_XLSkipMessageText
+	if "$(_EV_MWMESSAGETEXT)" EQ ""
+		Goto MW_XLSkipMessageText
+
+	Assign SendRec "$(SendRec)MT$(_EV_MWMESSAGETEXT)|"
+
+:MW_XLSkipMessageText
+
+	Goto MW_Send
+
+:MW_XT
+
+	if "$(s_XT)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XT events - Build the record
+	Assign SendRec "XT|"
+
+	if "$(s_XTDA)" NE "TRUE"
+		Goto MW_XTSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_EVENTDATE:DATE:6:YYMMDD>|"
+
+:MW_XTSkipDate
+
+	if "$(s_XTTI)" NE "TRUE"
+		Goto MW_XTSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_EVENTTIME:TIME:6:HHMMSS>|"
+
+:MW_XTSkipTime
+
+	if "$(s_XTRN)" NE "TRUE"
+		Goto MW_XTSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:MW_XTSkipRoomNumber
+
+	if "$(s_XTG#)" NE "TRUE"
+		Goto MW_XTSkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto MW_XTSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:MW_XTSkipReservation
+
+	if "$(s_XTMI)" NE "TRUE"
+		Goto MW_XTSkipMessageID
+	if "$(_EV_MWMESSAGEID)" EQ ""
+		Goto MW_XTSkipMessageID
+
+	Assign SendRec "$(SendRec)MI$(_EV_MWMESSAGEID)|"
+
+:MW_XTSkipMessageID
+
+	if "$(s_XTMT)" NE "TRUE"
+		Goto MW_XTSkipMessageText
+	if "$(_EV_MWMESSAGETEXT)" EQ ""
+		Goto MW_XTSkipMessageText
+
+	Assign SendRec "$(SendRec)MT$(_EV_MWMESSAGETEXT)|"
+
+:MW_XTSkipMessageText
+
+	Goto MW_Send
+
+:MW_XD
+
+	if "$(s_XD)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XD events - Build the record
+	Assign SendRec "XD|"
+
+	if "$(s_XDDA)" NE "TRUE"
+		Goto MW_XDSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_EVENTDATE:DATE:6:YYMMDD>|"
+
+:MW_XDSkipDate
+
+	if "$(s_XDTI)" NE "TRUE"
+		Goto MW_XDSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_EVENTTIME:TIME:6:HHMMSS>|"
+
+:MW_XDSkipTime
+
+	if "$(s_XDRN)" NE "TRUE"
+		Goto MW_XDSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:MW_XDSkipRoomNumber
+
+	if "$(s_XDG#)" NE "TRUE"
+		Goto MW_XDSkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto MW_XDSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:MW_XDSkipReservation
+
+	if "$(s_XDMI)" NE "TRUE"
+		Goto MW_XDSkipMessageID
+	if "$(_EV_MWMESSAGEID)" EQ ""
+		Goto MW_XDSkipMessageID
+
+	Assign SendRec "$(SendRec)MI$(_EV_MWMESSAGEID)|"
+
+:MW_XDSkipMessageID
+
+	Goto MW_Send
+
+:MW_Send
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WK_Set
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto WK_Clear
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WK_ClearAll	
+
+	Echo If: Unsupported _EV_WKACTION: "$(_EV_WKACTION)".
+	Goto IgnoreRecord
+
+:WK_Set
+
+	if "$(s_WR)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending WR events - Build the record
+	Assign SendRec "WR|"
+
+	if "$(s_WRDA)" NE "TRUE"
+		Goto WK_WRSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_WKDATE:DATE:6:YYMMDD>|"
+
+:WK_WRSkipDate
+
+	if "$(s_WRTI)" NE "TRUE"
+		Goto WK_WRSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_WKTIME:TIME:6:HHMMSS>|"
+
+:WK_WRSkipTime
+
+	if "$(s_WRRN)" NE "TRUE"
+		Goto WK_WRSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:WK_WRSkipRoomNumber
+
+	Goto WK_Send
+
+:WK_Clear
+
+	if "$(s_WC)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending WC events - Build the record
+	Assign SendRec "WC|"
+
+	Call GetDateTime
+
+	if "$(s_WCDA)" NE "TRUE"
+		Goto WK_WCSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_WKDATE:DATE:6:YYMMDD>|"
+
+:WK_WCSkipDate
+
+	if "$(s_WCTI)" NE "TRUE"
+		Goto WK_WCSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_WKTIME:TIME:6:HHMMSS>|"
+
+:WK_WCSkipTime
+
+	if "$(s_WCRN)" NE "TRUE"
+		Goto WK_WCSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:WK_WCSkipRoomNumber
+
+	Goto WK_Send
+
+:WK_ClearAll
+
+	if "$(s_WC)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending WR events - Build the record
+	Assign SendRec "WC|"
+
+	if "$(s_WCDA)" NE "TRUE"
+		Goto WK_WCASkipDate
+
+	Assign SendRec "$(SendRec)DA|"
+
+:WK_WCASkipDate
+
+	if "$(s_WCTI)" NE "TRUE"
+		Goto WK_WCASkipTime
+
+	Assign SendRec "$(SendRec)TI|"
+
+:WK_WCASkipTime
+
+	if "$(s_WCRN)" NE "TRUE"
+		Goto WK_WCASkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:WK_WCASkipRoomNumber
+
+	Goto WK_Send
+
+:WK_Send
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_GI)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GI events - Build the record
+	Assign SendRec "GI|"
+
+	Call GetDateTime
+
+	if "$(s_GIDA)" NE "TRUE"
+		Goto CI_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:CI_SkipDate
+
+	if "$(s_GITI)" NE "TRUE"
+		Goto CI_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:CI_SkipTime
+
+	if "$(s_GIRN)" NE "TRUE"
+		Goto CI_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:CI_SkipRoomNumber
+
+	if "$(s_GIG#)" NE "TRUE"
+		Goto CI_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto CI_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:CI_SkipReservation
+
+	if "$(s_GIGS)" NE "TRUE"
+		Goto CI_SkipGuestShare
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:CI_SkipGuestShare
+
+	if "$(s_GIGN)" NE "TRUE"
+		Goto CI_SkipGuestName
+	if "$(_EV_GUESTNAME)" EQ ""
+		Goto CI_SkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_GUESTNAME)|"
+
+:CI_SkipGuestName
+
+	if "$(s_GIGF)" NE "TRUE"
+		Goto CI_SkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto CI_SkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:CI_SkipGuestFirstName
+
+	if "$(s_GIGT)" NE "TRUE"
+		Goto CI_SkipGuestTitle
+	if "$(_EV_CITITLE)" EQ ""
+		Goto CI_SkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_CITITLE)|"
+
+:CI_SkipGuestTitle
+
+	if "$(s_GIGA)" NE "TRUE"
+		Goto CI_SkipGuestArrive
+	if "$(_EV_CIDATEARRIVE)" EQ ""
+		Goto CI_SkipGuestArrive
+
+	Assign SendRec "$(SendRec)GA$(_EV_CIDATEARRIVE)|"
+
+:CI_SkipGuestArrive
+
+	if "$(s_GIGD)" NE "TRUE"
+		Goto CI_SkipGuestDepart
+	if "$(_EV_CIDATEARRIVE)" EQ ""
+		Goto CI_SkipGuestDepart
+
+	Assign SendRec "$(SendRec)GD$(_EV_CIDATEDEPART)|"
+
+:CI_SkipGuestDepart
+
+	if "$(s_GIGV)" NE "TRUE"
+		Goto CI_SkipGuestVIP
+	if "$(_EV_CIVIP)" EQ ""
+		Goto CI_SkipGuestVIP
+
+	Assign SendRec "$(SendRec)GV$(_EV_CIVIP)|"
+
+:CI_SkipGuestVIP
+
+	if "$(s_GIGL)" NE "TRUE"
+		Goto CI_SkipGuestLanguage
+	if "$(_EV_CILANGCODE)" EQ ""
+		Goto CI_SkipGuestLanguage
+
+	Assign SendRec "$(SendRec)GL$(_EV_CILANGCODE)|"
+
+:CI_SkipGuestLanguage
+
+//	if "$(s_GIGG)" NE "TRUE"
+//		Goto CI_SkipGuestGroup
+
+:CI_SkipGuestGroup
+
+	if "$(s_GINP)" NE "TRUE"
+		Goto CI_SkipNoPost
+	if "$(_EV_CICFGFIELD_10)" EQ ""
+		Goto CI_SkipNoPost
+
+	Assign SendRec "$(SendRec)NP$(_EV_CICFGFIELD_10)|"
+
+
+:CI_SkipNoPost
+
+	if "$(s_GITV)" NE "TRUE"
+		Goto CI_SkipTVRights
+	if "$(_EV_CITVVIDEORIGHTS)" EQ ""
+		Goto CI_SkipTVRights
+
+	Assign SendRec "$(SendRec)TV$(_EV_CITVVIDEORIGHTS)|"
+
+:CI_SkipTVRights
+
+	if "$(s_GIVR)" NE "TRUE"
+		Goto CI_SkipVideoRights
+	if "$(_EV_CICFGFIELD_19)" EQ "TRUE"
+		Goto CI_SkipVideoRights
+
+	Assign SendRec "$(SendRec)VR$(_EV_CICFGFIELD_19)|"
+
+:CI_SkipVideoRights
+
+	if "$(s_GIMR)" NE "TRUE"
+		Goto CI_SkipMinibarRights
+	if "$(_EV_CIMINIBARRIGHTS)" EQ ""
+		Goto CI_SkipMinibarRights
+
+	Assign SendRec "$(SendRec)MR$(_EV_CIMINIBARRIGHTS)|"
+
+:CI_SkipMinibarRights
+
+	if "$(s_GIA0)" NE "TRUE"
+		Goto CI_SkipA0
+	if "$(_EV_CICFGFIELD_0)" EQ ""
+		Goto CI_SkipA0
+
+	Assign SendRec "$(SendRec)A0$(_EV_CICFGFIELD_0)|"
+
+:CI_SkipA0
+
+	if "$(s_GIA1)" NE "TRUE"
+		Goto CI_SkipA1
+	if "$(_EV_CICFGFIELD_1)" EQ ""
+		Goto CI_SkipA1
+
+	Assign SendRec "$(SendRec)A1$(_EV_CICFGFIELD_1)|"
+
+:CI_SkipA1
+
+	if "$(s_GIA2)" NE "TRUE"
+		Goto CI_SkipA2
+	if "$(_EV_CICFGFIELD_2)" EQ ""
+		Goto CI_SkipA2
+
+	Assign SendRec "$(SendRec)A2$(_EV_CICFGFIELD_2)|"
+
+:CI_SkipA2
+
+	if "$(s_GIA3)" NE "TRUE"
+		Goto CI_SkipA3
+	if "$(_EV_CICFGFIELD_3)" EQ ""
+		Goto CI_SkipA3
+
+	Assign SendRec "$(SendRec)A3$(_EV_CICFGFIELD_3)|"
+
+:CI_SkipA3
+
+	if "$(s_GIA4)" NE "TRUE"
+		Goto CI_SkipA4
+	if "$(_EV_CICFGFIELD_4)" EQ ""
+		Goto CI_SkipA4
+
+	Assign SendRec "$(SendRec)A4$(_EV_CICFGFIELD_4)|"
+
+:CI_SkipA4
+
+	if "$(s_GIA5)" NE "TRUE"
+		Goto CI_SkipA5
+	if "$(_EV_CICFGFIELD_5)" EQ ""
+		Goto CI_SkipA5
+
+	Assign SendRec "$(SendRec)A5$(_EV_CICFGFIELD_5)|"
+
+:CI_SkipA5
+
+	if "$(s_GIA6)" NE "TRUE"
+		Goto CI_SkipA6
+	if "$(_EV_CICFGFIELD_6)" EQ ""
+		Goto CI_SkipA6
+
+	Assign SendRec "$(SendRec)A6$(_EV_CICFGFIELD_6)|"
+
+:CI_SkipA6
+
+	if "$(s_GIA7)" NE "TRUE"
+		Goto CI_SkipA7
+	if "$(_EV_CICFGFIELD_7)" EQ ""
+		Goto CI_SkipA7
+
+	Assign SendRec "$(SendRec)A7$(_EV_CICFGFIELD_7)|"
+
+:CI_SkipA7
+
+	if "$(s_GIA8)" NE "TRUE"
+		Goto CI_SkipA8
+	if "$(_EV_CICFGFIELD_8)" EQ ""
+		Goto CI_SkipA8
+
+	Assign SendRec "$(SendRec)A8$(_EV_CICFGFIELD_8)|"
+
+:CI_SkipA8
+
+	if "$(s_GIA9)" NE "TRUE"
+		Goto CI_SkipA9
+	if "$(_EV_CICFGFIELD_9)" EQ ""
+		Goto CI_SkipA9
+
+	Assign SendRec "$(SendRec)A9$(_EV_CICFGFIELD_9)|"
+
+:CI_SkipA9
+
+//	if "$(s_GIEN)" NE "TRUE"
+//		Goto CI_SkipEquipmentNumber
+
+:CI_SkipEquipmentNumber
+
+//	if "$(s_GIES)" NE "TRUE"
+//		Goto CI_SkipEquipmentStatus
+
+:CI_SkipEquipmentStatus
+
+//	if "$(s_GIEP)" NE "TRUE"
+//		Goto CI_SkipEquipmentPool
+
+:CI_SkipEquipmentPool
+
+//	if "$(s_GIWS)" NE "TRUE"
+//		Goto CI_SkipWorkstation
+
+:CI_SkipWorkstation
+
+	if "$(s_GISF)" NE "TRUE"
+		Goto CI_SkipSwapFlag
+
+	if "$(_EV_CISWAPFLAG)" EQ "TRUE"
+		Assign SendRec "$(SendRec)SF|"
+
+:CI_SkipSwapFlag
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_GO)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GO events - Build the record
+	Assign SendRec "GO|"
+
+	Call GetDateTime
+
+	if "$(s_GODA)" NE "TRUE"
+		Goto CO_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:CO_SkipDate
+
+	if "$(s_GOTI)" NE "TRUE"
+		Goto CO_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:CO_SkipTime
+
+	if "$(s_GORN)" NE "TRUE"
+		Goto CO_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:CO_SkipRoomNumber
+
+	if "$(s_GOG#)" NE "TRUE"
+		Goto CO_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto CO_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:CO_SkipReservation
+
+	if "$(s_GOGS)" NE "TRUE"
+		Goto CO_SkipGuestShare
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:CO_SkipGuestShare
+
+//	if "$(s_GOEN)" NE "TRUE"
+//		Goto CO_SkipEquipmentNumber
+
+:CO_SkipEquipmentNumber
+
+//	if "$(s_GOES)" NE "TRUE"
+//		Goto CO_SkipEquipmentStatus
+
+:CO_SkipEquipmentStatus
+
+//	if "$(s_GOEP)" NE "TRUE"
+//		Goto CO_SkipEquipmentPool
+
+:CO_SkipEquipmentPool
+
+//	if "$(s_GOWS)" NE "TRUE"
+//		Goto CO_SkipWorkstation
+
+:CO_SkipWorkstation
+
+	if "$(s_GOSF)" NE "TRUE"
+		Goto CO_SkipSwapFlag
+
+	if "$(_EV_COSWAPFLAG)" EQ "TRUE"
+		Assign SendRec "$(SendRec)SF|"
+
+:CO_SkipSwapFlag
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_RE)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_RECS)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending RE CS events - Build the record
+	Assign SendRec "RE|"
+
+	if "$(s_RERN)" NE "TRUE"
+		Goto COS_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:COS_SkipRoomNumber
+
+	if "$(s_REG#)" NE "TRUE"
+		Goto COS_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto COS_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:COS_SkipReservation
+
+	Assign WorkVal "0"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "3"
+
+	Assign SendRec "$(SendRec)CS$(WorkVal)|"
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_GC)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GC events - Build the record
+	Assign SendRec "GC|"
+
+	Call GetDateTime
+
+	if "$(s_GCDA)" NE "TRUE"
+		Goto RU_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:RU_SkipDate
+
+	if "$(s_GCTI)" NE "TRUE"
+		Goto RU_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:RU_SkipTime
+
+	if "$(s_GCRN)" NE "TRUE"
+		Goto RU_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:RU_SkipRoomNumber
+
+	if "$(s_GCG#)" NE "TRUE"
+		Goto RU_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto RU_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:RU_SkipReservation
+
+	if "$(s_GCGS)" NE "TRUE"
+		Goto RU_SkipGuestShare
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:RU_SkipGuestShare
+
+	if "$(s_GCGN)" NE "TRUE"
+		Goto RU_SkipGuestName
+	if "$(_EV_GUESTNAME)" EQ ""
+		Goto RU_SkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_GUESTNAME)|"
+
+:RU_SkipGuestName
+
+	if "$(s_GCGF)" NE "TRUE"
+		Goto RU_SkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto RU_SkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:RU_SkipGuestFirstName
+
+	if "$(s_GCGT)" NE "TRUE"
+		Goto RU_SkipGuestTitle
+	if "$(_EV_RUTITLE)" EQ ""
+		Goto RU_SkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_RUTITLE)|"
+
+:RU_SkipGuestTitle
+
+	if "$(s_GCGA)" NE "TRUE"
+		Goto RU_SkipGuestArrive
+	if "$(_EV_RUDATEARRIVE)" EQ ""
+		Goto RU_SkipGuestArrive
+
+	Assign SendRec "$(SendRec)GA$(_EV_RUDATEARRIVE)|"
+
+:RU_SkipGuestArrive
+
+	if "$(s_GCGD)" NE "TRUE"
+		Goto RU_SkipGuestDepart
+	if "$(_EV_RUDATEARRIVE)" EQ ""
+		Goto RU_SkipGuestDepart
+
+	Assign SendRec "$(SendRec)GD$(_EV_RUDATEDEPART)|"
+
+:RU_SkipGuestDepart
+
+	if "$(s_GCGV)" NE "TRUE"
+		Goto RU_SkipGuestVIP
+	if "$(_EV_RUVIP)" EQ ""
+		Goto RU_SkipGuestVIP
+
+	Assign SendRec "$(SendRec)GV$(_EV_RUVIP)|"
+
+:RU_SkipGuestVIP
+
+	if "$(s_GCGL)" NE "TRUE"
+		Goto RU_SkipGuestLanguage
+	if "$(_EV_RULANGCODE)" EQ ""
+		Goto RU_SkipGuestLanguage
+
+	Assign SendRec "$(SendRec)GL$(_EV_RULANGCODE)|"
+
+:RU_SkipGuestLanguage
+
+//	if "$(s_GCGG)" NE "TRUE"
+//		Goto RU_SkipGuestGroup
+
+:RU_SkipGuestGroup
+
+	if "$(s_GCNP)" NE "TRUE"
+		Goto RU_SkipNoPost
+	if "$(_EV_RUCFGFIELD_10)" EQ ""
+		Goto RU_SkipNoPost
+
+	Assign SendRec "$(SendRec)NP$(_EV_RUCFGFIELD_10)|"
+
+
+:RU_SkipNoPost
+
+	if "$(s_GCTV)" NE "TRUE"
+		Goto RU_SkipTVRights
+	if "$(_EV_RUTVVIDEORIGHTS)" EQ ""
+		Goto RU_SkipTVRights
+
+	Assign SendRec "$(SendRec)TV$(_EV_RUTVVIDEORIGHTS)|"
+
+:RU_SkipTVRights
+
+	if "$(s_GCVR)" NE "TRUE"
+		Goto RU_SkipVideoRights
+	if "$(_EV_RUCFGFIELD_19)" EQ "TRUE"
+		Goto RU_SkipVideoRights
+
+	Assign SendRec "$(SendRec)VR$(_EV_RUCFGFIELD_19)|"
+
+:RU_SkipVideoRights
+
+	if "$(s_GCMR)" NE "TRUE"
+		Goto RU_SkipMinibarRights
+	if "$(_EV_RUMINIBARRIGHTS)" EQ ""
+		Goto RU_SkipMinibarRights
+
+	Assign SendRec "$(SendRec)MR$(_EV_RUMINIBARRIGHTS)|"
+
+:RU_SkipMinibarRights
+
+	if "$(s_GCA0)" NE "TRUE"
+		Goto RU_SkipA0
+	if "$(_EV_RUCFGFIELD_0)" EQ ""
+		Goto RU_SkipA0
+
+	Assign SendRec "$(SendRec)A0$(_EV_RUCFGFIELD_0)|"
+
+:RU_SkipA0
+
+	if "$(s_GCA1)" NE "TRUE"
+		Goto RU_SkipA1
+	if "$(_EV_RUCFGFIELD_1)" EQ ""
+		Goto RU_SkipA1
+
+	Assign SendRec "$(SendRec)A1$(_EV_RUCFGFIELD_1)|"
+
+:RU_SkipA1
+
+	if "$(s_GCA2)" NE "TRUE"
+		Goto RU_SkipA2
+	if "$(_EV_RUCFGFIELD_2)" EQ ""
+		Goto RU_SkipA2
+
+	Assign SendRec "$(SendRec)A2$(_EV_RUCFGFIELD_2)|"
+
+:RU_SkipA2
+
+	if "$(s_GCA3)" NE "TRUE"
+		Goto RU_SkipA3
+	if "$(_EV_RUCFGFIELD_3)" EQ ""
+		Goto RU_SkipA3
+
+	Assign SendRec "$(SendRec)A3$(_EV_RUCFGFIELD_3)|"
+
+:RU_SkipA3
+
+	if "$(s_GCA4)" NE "TRUE"
+		Goto RU_SkipA4
+	if "$(_EV_RUCFGFIELD_4)" EQ ""
+		Goto RU_SkipA4
+
+	Assign SendRec "$(SendRec)A4$(_EV_RUCFGFIELD_4)|"
+
+:RU_SkipA4
+
+	if "$(s_GCA5)" NE "TRUE"
+		Goto RU_SkipA5
+	if "$(_EV_RUCFGFIELD_5)" EQ ""
+		Goto RU_SkipA5
+
+	Assign SendRec "$(SendRec)A5$(_EV_RUCFGFIELD_5)|"
+
+:RU_SkipA5
+
+	if "$(s_GCA6)" NE "TRUE"
+		Goto RU_SkipA6
+	if "$(_EV_RUCFGFIELD_6)" EQ ""
+		Goto RU_SkipA6
+
+	Assign SendRec "$(SendRec)A6$(_EV_RUCFGFIELD_6)|"
+
+:RU_SkipA6
+
+	if "$(s_GCA7)" NE "TRUE"
+		Goto RU_SkipA7
+	if "$(_EV_RUCFGFIELD_7)" EQ ""
+		Goto RU_SkipA7
+
+	Assign SendRec "$(SendRec)A7$(_EV_RUCFGFIELD_7)|"
+
+:RU_SkipA7
+
+	if "$(s_GCA8)" NE "TRUE"
+		Goto RU_SkipA8
+	if "$(_EV_RUCFGFIELD_8)" EQ ""
+		Goto RU_SkipA8
+
+	Assign SendRec "$(SendRec)A8$(_EV_RUCFGFIELD_8)|"
+
+:RU_SkipA8
+
+	if "$(s_GCA9)" NE "TRUE"
+		Goto RU_SkipA9
+	if "$(_EV_RUCFGFIELD_9)" EQ ""
+		Goto RU_SkipA9
+
+	Assign SendRec "$(SendRec)A9$(_EV_RUCFGFIELD_9)|"
+
+:RU_SkipA9
+
+//	if "$(s_GCEN)" NE "TRUE"
+//		Goto RU_SkipEquipmentNumber
+
+:RU_SkipEquipmentNumber
+
+//	if "$(s_GCES)" NE "TRUE"
+//		Goto RU_SkipEquipmentStatus
+
+:RU_SkipEquipmentStatus
+
+//	if "$(s_GCEP)" NE "TRUE"
+//		Goto RU_SkipEquipmentPool
+
+:RU_SkipEquipmentPool
+
+//	if "$(s_GCWS)" NE "TRUE"
+//		Goto RU_SkipWorkstation
+
+:RU_SkipWorkstation
+
+	if "$(s_GCSF)" NE "TRUE"
+		Goto RU_SkipSwapFlag
+
+	if "$(_EV_RUSWAPFLAG)" EQ "TRUE"
+		Assign SendRec "$(SendRec)SF|"
+
+:RU_SkipSwapFlag
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_TransferCheckoutCheckin)" EQ "YES"
+		Goto RoomTransfer_CheckoutCheckin
+
+	if "$(s_GC)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_GCRO)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GC Transfer events - Build the record
+	Assign SendRec "GC|"
+
+	Call GetDateTime
+
+	if "$(s_GCDA)" NE "TRUE"
+		Goto TR_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:TR_SkipDate
+
+	if "$(s_GCTI)" NE "TRUE"
+		Goto TR_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:TR_SkipTime
+
+	if "$(s_GCG#)" NE "TRUE"
+		Goto TR_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto TR_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:TR_SkipReservation
+
+	if "$(s_GCGN)" NE "TRUE"
+		Goto TR_SkipGuestName
+	if "$(_EV_GUESTNAME)" EQ ""
+		Goto TR_SkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_GUESTNAME)|"
+
+:TR_SkipGuestName
+
+	if "$(s_GCGF)" NE "TRUE"
+		Goto TR_SkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto TR_SkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:TR_SkipGuestFirstName
+
+	if "$(s_GCGT)" NE "TRUE"
+		Goto TR_SkipGuestTitle
+	if "$(_EV_TRTITLE)" EQ ""
+		Goto TR_SkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_TRTITLE)|"
+
+:TR_SkipGuestTitle
+
+	if "$(s_GCRN)" NE "TRUE"
+		Goto TR_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_TRDESTROOMNUMBER)|"
+
+:TR_SkipRoomNumber
+
+	if "$(s_GCGS)" NE "TRUE"
+		Goto TR_SkipGuestShareDest
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:TR_SkipGuestShareDest
+
+	if "$(s_GCRO)" NE "TRUE"
+		Goto TR_SkipRoomOld
+
+	Assign SendRec "$(SendRec)RO$(_EV_ROOMNUMBER)|"
+
+:TR_SkipRoomOld
+
+	if "$(s_GCGS)" NE "TRUE"
+		Goto TR_SkipGuestShareSource
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:TR_SkipGuestShareSource
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+
+:RoomTransfer_CheckoutCheckin
+
+	Assign SendRec "GO|"
+
+	Call GetDateTime
+
+	if "$(s_GODA)" NE "TRUE"
+		Goto TRCO_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:TRCO_SkipDate
+
+	if "$(s_GOTI)" NE "TRUE"
+		Goto TRCO_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:TRCO_SkipTime
+
+	if "$(s_GORN)" NE "TRUE"
+		Goto TRCO_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:TRCO_SkipRoomNumber
+
+	if "$(s_GOG#)" NE "TRUE"
+		Goto TRCO_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto TRCO_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:TRCO_SkipReservation
+
+	if "$(s_GOGS)" NE "TRUE"
+		Goto TRCO_SkipGuestShare
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:TRCO_SkipGuestShare
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+	
+:TRCI_Start
+
+	Assign SendRec "GI|"
+
+	Call GetDateTime
+
+	if "$(s_GIDA)" NE "TRUE"
+		Goto TRCI_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:TRCI_SkipDate
+
+	if "$(s_GITI)" NE "TRUE"
+		Goto TRCI_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:TRCI_SkipTime
+
+	if "$(s_GIRN)" NE "TRUE"
+		Goto TRCI_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_TRDESTROOMNUMBER)|"
+
+:TRCI_SkipRoomNumber
+
+	if "$(s_GIG#)" NE "TRUE"
+		Goto TRCI_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto TRCI_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:TRCI_SkipReservation
+
+	if "$(s_GIGS)" NE "TRUE"
+		Goto TRCI_SkipGuestShare
+
+	Assign SendRec "$(SendRec)GSN|"
+
+:TRCI_SkipGuestShare
+
+	if "$(s_GIGN)" NE "TRUE"
+		Goto TRCI_SkipGuestName
+	if "$(_EV_GUESTNAME)" EQ ""
+		Goto TRCI_SkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_GUESTNAME)|"
+
+:TRCI_SkipGuestName
+
+	if "$(s_GIGF)" NE "TRUE"
+		Goto TRCI_SkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto TRCI_SkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:TRCI_SkipGuestFirstName
+
+	if "$(s_GIGT)" NE "TRUE"
+		Goto TRCI_SkipGuestTitle
+	if "$(_EV_TRTITLE)" EQ ""
+		Goto TRCI_SkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_TRTITLE)|"
+
+:TRCI_SkipGuestTitle
+
+	if "$(s_GIGV)" NE "TRUE"
+		Goto TRCI_SkipGuestVIP
+	if "$(_EV_TRVIP)" EQ ""
+		Goto TRCI_SkipGuestVIP
+
+	Assign SendRec "$(SendRec)GV$(_EV_TRVIP)|"
+
+:TRCI_SkipGuestVIP
+
+	if "$(s_GIGL)" NE "TRUE"
+		Goto TRCI_SkipGuestLanguage
+	if "$(_EV_LANGCODE)" EQ ""
+		Goto TRCI_SkipGuestLanguage
+
+	Assign SendRec "$(SendRec)GL$(_EV_LANGCODE)|"
+
+:TRCI_SkipGuestLanguage
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(_EV_EGACTION)" EQ "ADD"
+		Goto EG_Checkin
+	if "$(_EV_EGACTION)" EQ "UPDATE"
+		Goto EG_RoomUpdate
+	if "$(_EV_EGACTION)" EQ "DELETE"
+		Goto EG_Checkout
+
+	Echo If: Unsupported _EV_EGACTION: "$(_EV_EGACTION)".
+	Goto IgnoreRecord
+
+:EG_Checkin
+
+	if "$(s_GI)" NE "TRUE"
+		Goto IgnoreRecord
+
+	if "$(s_CheckinOnAddGuest)" EQ "YES"
+		Goto EG_Checkin_BuildRecord
+
+	if "$(s_GIGS)" NE "TRUE"
+		Goto IgnoreRecord
+
+:EG_Checkin_BuildRecord
+
+//	We should be sending GI GS events - Build the record
+	Assign SendRec "GI|"
+
+	Call GetDateTime
+
+	if "$(s_GIDA)" NE "TRUE"
+		Goto EG_CISkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:EG_CISkipDate
+
+	if "$(s_GITI)" NE "TRUE"
+		Goto EG_CISkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:EG_CISkipTime
+
+	if "$(s_GIRN)" NE "TRUE"
+		Goto EG_CISkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:EG_CISkipRoomNumber
+
+	if "$(s_GIG#)" NE "TRUE"
+		Goto EG_CISkipReservation
+	if "$(_EV_EGNUMBER)" EQ ""
+		Goto EG_CISkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_EGNUMBER)|"
+
+:EG_CISkipReservation
+
+	if "$(s_GIGS)" EQ "TRUE"
+		Assign SendRec "$(SendRec)GSY|"
+
+:EG_CISkipGuestShare
+
+	if "$(s_GIGN)" NE "TRUE"
+		Goto EG_CISkipGuestName
+	if "$(_EV_EGGUESTNAME)" EQ ""
+		Goto EG_CISkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_EGGUESTNAME)|"
+
+:EG_CISkipGuestName
+
+	if "$(s_GIGF)" NE "TRUE"
+		Goto EG_CISkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto EG_CISkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:EG_CISkipGuestFirstName
+
+	if "$(s_GIGT)" NE "TRUE"
+		Goto EG_CISkipGuestTitle
+	if "$(_EV_EGTITLE)" EQ ""
+		Goto EG_CISkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_EGTITLE)|"
+
+:EG_CISkipGuestTitle
+
+	if "$(s_GIGV)" NE "TRUE"
+		Goto EG_CISkipGuestVIP
+	if "$(_EV_EGVIP)" EQ ""
+		Goto EG_CISkipGuestVIP
+
+	Assign SendRec "$(SendRec)GV$(_EV_EGVIP)|"
+
+:EG_CISkipGuestVIP
+
+	if "$(s_GIGL)" NE "TRUE"
+		Goto EG_CISkipGuestLanguage
+	if "$(_EV_LANGCODE)" EQ ""
+		Goto EG_CISkipGuestLanguage
+
+	Assign SendRec "$(SendRec)GL$(_EV_LANGCODE)|"
+
+:EG_CISkipGuestLanguage
+
+	if "$(s_GINP)" NE "TRUE"
+		Goto EG_CISkipNoPost
+
+	Assign WorkVal "Y"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "N"
+
+	Assign SendRec "$(SendRec)NP$(WorkVal)|"
+
+:EG_CISkipNoPost
+
+	Goto EG_Done
+
+:EG_RoomUpdate
+
+	if "$(s_GC)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_GCGS)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GC GS events - Build the record
+	Assign SendRec "GC|"
+
+	Call GetDateTime
+
+	if "$(s_GCDA)" NE "TRUE"
+		Goto EG_RUSkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:EG_RUSkipDate
+
+	if "$(s_GCTI)" NE "TRUE"
+		Goto EG_RUSkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:EG_RUSkipTime
+
+	if "$(s_GCRN)" NE "TRUE"
+		Goto EG_RUSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:EG_RUSkipRoomNumber
+
+	if "$(s_GCG#)" NE "TRUE"
+		Goto EG_RUSkipReservation
+	if "$(_EV_EGNUMBER)" EQ ""
+		Goto EG_RUSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_EGNUMBER)|"
+
+:EG_RUSkipReservation
+
+	Assign SendRec "$(SendRec)GSY|"
+
+:EG_RUSkipGuestShare
+
+	if "$(s_GCGN)" NE "TRUE"
+		Goto EG_RUSkipGuestName
+	if "$(_EV_EGGUESTNAME)" EQ ""
+		Goto EG_RUSkipGuestName
+
+	Assign SendRec "$(SendRec)GN$(_EV_EGGUESTNAME)|"
+
+:EG_RUSkipGuestName
+
+	if "$(s_GIGF)" NE "TRUE"
+		Goto EG_RUSkipGuestFirstName
+	if "$(_EV_INITIALS)" EQ ""
+		Goto EG_RUSkipGuestFirstName
+
+	Assign SendRec "$(SendRec)GF$(_EV_INITIALS)|"
+
+:EG_RUSkipGuestFirstName
+
+	if "$(s_GIGT)" NE "TRUE"
+		Goto EG_RUSkipGuestTitle
+	if "$(_EV_EGTITLE)" EQ ""
+		Goto EG_RUSkipGuestTitle
+
+	Assign SendRec "$(SendRec)GT$(_EV_EGTITLE)|"
+
+:EG_RUSkipGuestTitle
+
+	if "$(s_GCGV)" NE "TRUE"
+		Goto EG_RUSkipGuestVIP
+	if "$(_EV_EGVIP)" EQ ""
+		Goto EG_RUSkipGuestVIP
+
+	Assign SendRec "$(SendRec)GV$(_EV_EGVIP)|"
+
+:EG_RUSkipGuestVIP
+
+	if "$(s_GCGL)" NE "TRUE"
+		Goto EG_RUSkipGuestLanguage
+	if "$(_EV_LANGCODE)" EQ ""
+		Goto EG_RUSkipGuestLanguage
+
+	Assign SendRec "$(SendRec)GL$(_EV_LANGCODE)|"
+
+:EG_RUSkipGuestLanguage
+
+	if "$(s_GCNP)" NE "TRUE"
+		Goto EG_RUSkipNoPost
+
+	Assign WorkVal "Y"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "N"
+
+	Assign SendRec "$(SendRec)NP$(WorkVal)|"
+
+:EG_RUSkipNoPost
+
+	Goto EG_Done
+
+:EG_Checkout
+
+	if "$(s_GO)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_GOGS)" NE "TRUE"
+		Goto IgnoreRecord
+
+
+//	We should be sending GO GS events - Build the record
+	Assign SendRec "GO|"
+
+	Call GetDateTime
+
+	if "$(s_GODA)" NE "TRUE"
+		Goto EG_COSkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:EG_COSkipDate
+
+	if "$(s_GOTI)" NE "TRUE"
+		Goto EG_COSkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:EG_COSkipTime
+
+	if "$(s_GORN)" NE "TRUE"
+		Goto EG_COSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:EG_COSkipRoomNumber
+
+	if "$(s_GOG#)" NE "TRUE"
+		Goto EG_COSkipReservation
+	if "$(_EV_EGNUMBER)" EQ ""
+		Goto EG_COSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_EGNUMBER)|"
+
+:EG_COSkipReservation
+
+	Assign SendRec "$(SendRec)GSY|"
+
+:EG_COSkipGuestShare
+
+	Goto EG_Done
+
+:EG_Done
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_RE)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_REDN)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending RE DN events - Build the record
+	Assign SendRec "RE|"
+
+	if "$(s_RERN)" NE "TRUE"
+		Goto DND_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:DND_SkipRoomNumber
+
+	if "$(s_REG#)" NE "TRUE"
+		Goto DND_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto DND_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:DND_SkipReservation
+
+	Assign WorkVal "N"
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign WorkVal "Y"
+
+	Assign SendRec "$(SendRec)DN$(WorkVal)|"
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(_EV_BRTYPE)" EQ "XI"
+		Goto BR_XI
+	if "$(_EV_BRTYPE)" EQ "XB"
+		Goto BR_XB
+
+	Echo If: Unsupported _EV_BRTYPE: "$(_EV_BRTYPE)".
+	Goto IgnoreRecord
+
+:BR_XI
+
+	if "$(s_XI)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XI events - Build the record
+	Assign SendRec "XI|"
+
+	if "$(s_XIDA)" NE "TRUE"
+		Goto BR_XISkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_BRDATE:DATE:6:YYMMDD>|"
+
+:BR_XISkipDate
+
+	if "$(s_XITI)" NE "TRUE"
+		Goto BR_XISkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_BRTIME:TIME:6:HHMMSS>|"
+
+:BR_XISkipTime
+
+	if "$(s_XIRN)" NE "TRUE"
+		Goto BR_XISkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:BR_XISkipRoomNumber
+
+	if "$(s_XIG#)" NE "TRUE"
+		Goto BR_XISkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto BR_XISkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:BR_XISkipReservation
+
+	if "$(s_XIBD)" NE "TRUE"
+		Goto BR_XISkipDescription
+	if "$(_EV_BRITEMDESC)" EQ ""
+		Goto BR_XISkipDescription
+
+	Assign SendRec "$(SendRec)BD$(_EV_BRITEMDESC)|"
+
+:BR_XISkipDescription
+
+	if "$(s_XIBI)" NE "TRUE"
+		Goto BR_XISkipAmount
+	if "$(_EV_BRITEMAMOUNT)"
+		Goto BR_XISkipAmount
+
+	Assign SendRec "$(SendRec)BI$(_EV_BRITEMAMOUNT)|"
+
+:BR_XISkipAmount
+
+	if "$(s_XIDC)" NE "TRUE"
+		Goto BR_XISkipDepartmentCode
+	if "$(_EV_BRPMSDEPTCODE)" EQ ""
+		Goto BR_XISkipDepartmentCode
+
+	Assign SendRec "$(SendRec)DC$(_EV_BRPMSDEPTCODE)|"
+
+:BR_XISkipDepartmentCode
+
+	if "$(s_XIFD)" NE "TRUE"
+		Goto BR_XISkipDisplayFlag
+
+	Assign SendRec "$(SendRec)FDY|"
+
+:BR_XISkipDisplayFlag
+
+//	if "$(s_XIF#)" NE "TRUE"
+//		Goto BR_XISkipFolioNumber
+
+:BR_XISkipFilioNumber
+
+	Goto BR_Send
+
+:BR_XB
+
+	if "$(s_XB)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XB events - Build the record
+	Assign SendRec "XB|"
+
+	if "$(s_XBDA)" NE "TRUE"
+		Goto BR_XBSkipDate
+
+	Assign SendRec "$(SendRec)DA<_EV_BRDATE:DATE:6:YYMMDD>|"
+
+:BR_XBSkipDate
+
+	if "$(s_XBTI)" NE "TRUE"
+		Goto BR_XBSkipTime
+
+	Assign SendRec "$(SendRec)TI<_EV_BRTIME:TIME:6:HHMMSS>|"
+
+:BR_XBSkipTime
+
+	if "$(s_XBRN)" NE "TRUE"
+		Goto BR_XBSkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:BR_XBSkipRoomNumber
+
+	if "$(s_XBG#)" NE "TRUE"
+		Goto BR_XBSkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto BR_XBSkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:BR_XBSkipReservation
+
+	if "$(s_XBBA)" NE "TRUE"
+		Goto BR_XBSkipAmount
+	if "$(_EV_BRBALANCE)" EQ ""
+		Goto BR_XBSkipAmount
+
+	Assign SendRec "$(SendRec)BA$(_EV_BRBALANCE)|"
+
+:BR_XBSkipAmount
+
+	Goto BR_Send
+
+:BR_Send
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_XC)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_XCAS)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending XC events - Build the record
+	Assign SendRec "XC|"
+
+	Call GetDateTime
+
+	if "$(s_XCDA)" NE "TRUE"
+		Goto EC_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:EC_SkipDate
+
+	if "$(s_XCTI)" NE "TRUE"
+		Goto EC_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:EC_SkipTime
+
+	if "$(s_XCRN)" NE "TRUE"
+		Goto EC_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:EC_SkipRoomNumber
+
+	if "$(s_XCG#)" NE "TRUE"
+		Goto EC_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto EC_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:EC_SkipReservation
+
+	Assign SendRec "$(SendRec)AS$(_EV_XCRESPONSE)|"
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+	if "$(s_PassthroughMode)" EQ "YES"
+		Goto IgnoreRecord
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_RE)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_RETV)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending RE TV events - Build the record
+	Assign SendRec "RE|"
+
+	Call GetDateTime
+
+	if "$(s_REDA)" NE "TRUE"
+		Goto TV_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:TV_SkipDate
+
+	if "$(s_RETI)" NE "TRUE"
+		Goto TV_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:TV_SkipTime
+
+	if "$(s_RERN)" NE "TRUE"
+		Goto TV_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:TV_SkipRoomNumber
+
+	if "$(s_REG#)" NE "TRUE"
+		Goto TV_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto TV_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:TV_SkipReservation
+
+	Assign SendRec "$(SendRec)TV$(_EV_TVRIGHTS)|"
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+	if "$(_EV_GPTMSGTYPE)" EQ "DatabaseSwap"
+		Goto GenericPassthrough_DatabaseSwap
+	if "$(_EV_GPTMSGTYPE)" EQ "FIASPassthrough"
+		Goto GenericPassthrough_FIASPassthrough
+
+	Goto IgnoreRecord
+
+:GenericPassthrough_DatabaseSwap
+
+	if "$(_EV_GPTCFGFIELD_1)" EQ "Request"
+		Goto IgnoreRecord
+	if "$(_EV_GPTCFGFIELD_1)" EQ "Start"
+		Assign SendRec "DS|"
+	if "$(_EV_GPTCFGFIELD_1)" EQ "End"
+		Assign SendRec "DE|"
+
+	Call GetDateTime
+
+	Assign SendRec "$(SendRec)DA$(Date)|TI$(Time)|<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+
+:GenericPassthrough_FIASPassthrough
+
+	Assign SendRec "$(_EV_GPTCFGFIELD_2)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Call DoLS
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming label.
+:ReceiveRecord
+
+	Call ClearFieldData
+
+	StartWaitTimer 10
+
+//	The next 2 characters are the RecType
+	ReadFromPort 2 2
+
+	Assign RecType "$(_PORTCHARS)"
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+//	If the RecType is LR we need to handle it differently
+	if "$(RecType)" EQ "LR"
+		Goto ReceiveLinkRecord
+
+//	Read the next character off so we're ready to take the incoming record
+	ReadFromPort 1 2
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:RR_ReadNextRecordField
+
+//	The next character will be either the first letter of the Field ID or an ETX
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto RR_ReadNextRecordField
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	Assign v_FieldID "$(_PORTCHARS)"
+
+//	If it's an ETX, we've finished the record
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto RR_ReadBCC
+
+:RR_ReadFieldID
+
+//	The next character is the end of the Field ID
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto RR_ReadFieldID
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	Assign v_FieldID "$(v_FieldID)$(_PORTCHARS)"
+
+	Assign v_FieldData ""
+
+:RR_ReadFieldData
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "|"
+		Call ProcessField
+	if "$(_PORTCHARS)" EQ "|"
+		Goto RR_ReadNextRecordField
+
+	if "$(_PORTCHARS)" NE ""
+		Assign v_FieldData "$(v_FieldData)$(_PORTCHARS)"
+
+	Goto RR_ReadFieldData
+
+:RR_ReadBCC
+
+	if "$(f_DoLRC)" NE "YES"
+		Goto RR_FinishedReceiving
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Goto RR_FinishedReceiving
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RR_FinishedReceiving
+
+	Goto RR_ReadBCC
+
+:RR_FinishedReceiving
+
+	Echo Rx: $(ReceivedRec)
+
+	if "$(f_Connection)" EQ "SERIAL"
+		Send <#6>
+	if "$(f_Connection)" EQ "SERIAL"
+		Echo Tx: <#6>
+
+	if "$(RecType)" EQ "LS"
+		Call HandleLS
+
+	if "$(RecType)" EQ "LA"
+		Call HandleLA
+
+	if "$(RecType)" EQ "LE"
+		Call HandleLE
+
+	if "$(RecType)" EQ "LD"
+		Call HandleLD
+
+	if "$(RecType)" EQ "RE"
+		Call HandleRE
+
+	if "$(RecType)" EQ "PS"
+		Call HandlePS
+
+	if "$(RecType)" EQ "WR"
+		Call HandleWR
+
+	if "$(RecType)" EQ "WC"
+		Call HandleWC
+
+	if "$(RecType)" EQ "WA"
+		Call HandleWA
+
+	if "$(RecType)" EQ "XR"
+		Call HandleXR
+
+	if "$(RecType)" EQ "XC"
+		Call HandleXC
+
+	if "$(RecType)" EQ "XM"
+		Call HandleXM
+
+	if "$(RecType)" EQ "XD"
+		Call HandleXD
+
+	if "$(RecType)" EQ "DR"
+		Call HandleDR
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveLinkRecord
+;   This label is called when we have received the start of a LinkRecord
+;   (LR) message in the ReceiveRecord label.
+:ReceiveLinkRecord
+
+//	Currently ReceivedRec is "<STX>LR"
+
+//	There should now be a "|RI" which we need to read off
+	ReadFromPort 3 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Timeout
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReceiveLinkRecord
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:RLR_ReadLRType
+
+//	Read off the next 2 characters which is the v_LRType
+	ReadFromPort 2 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Timeout
+	if "$(_PORTCHARS)" EQ ""
+		Goto RLR_ReadLRType
+
+	Assign v_LRType "$(_PORTCHARS)"
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+//	There should now be a "|" to signal the start of the record
+	ReadFromPort 1
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:RLR_ReadFirstCharacter
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 100
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Timeout
+	if "$(_PORTCHARS)" EQ ""
+		Goto RLR_ReadFirstCharacter
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "|"
+		Goto RLR_ReadETX
+
+	Assign v_LRField "$(_PORTCHARS)"
+
+:RLR_ReadSecondCharacter
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Timeout
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Assign v_LRField "$(v_LRField)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Call HandleLR
+	if "$(_PORTCHARS)" NE ""
+		Goto RLR_ReadFirstCharacter
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 100
+
+	Goto RLR_ReadSecondCharacter
+
+:RLR_ReadETX
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Timeout
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto RLR_ReadETX
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto RLR_ReadBCC
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 100
+
+	Goto RLR_ReadETX
+
+:RLR_ReadBCC
+
+	if "$(f_DoLRC)" NE "YES"
+		Goto RLR_Done
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Goto RLR_Done
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RLR_Done
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 100
+
+	Goto RLR_ReadBCC
+
+:RLR_Done
+
+	Echo Rx: $(ReceivedRec)
+
+	if "$(f_Connection)" EQ "SERIAL"
+		Send <#6>
+	if "$(f_Connection)" EQ "SERIAL"
+		Echo Tx: <#6>
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessField
+;   This label is called when we have received a full data field in the
+;   ReceiveRecord label.
+:ProcessField
+
+	if "$(v_FieldID)" EQ "MA"
+		Call ProcessField_CheckMinibar
+
+	if "$(v_FieldID)" EQ "AS"
+		Assign in_AnswerStatus "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "BA"
+		Assign in_BillBalance "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "CT"
+		Assign in_ClearText "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "D1"
+		Assign in_Discount1 "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "DA"
+		Assign in_Date "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "DD"
+		Assign in_DialledDigits "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "DU"
+		Assign in_Duration "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "G#"
+		Assign in_Reservation "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "ID"
+		Assign in_UserID "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "M#"
+		Assign in_Quantity "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "MA"
+		Assign in_Item "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "MA"
+		Assign f_GotPreviousMinibar "TRUE"
+	if "$(v_FieldID)" EQ "MI"
+		Assign in_MessageID "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "MP"
+		Assign in_MeterPulse "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "MT"
+		Assign in_MessageText "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "P#"
+		Assign in_PostID "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "PT"
+		Assign in_PostingType "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "PX"
+		Assign in_PostingRoute "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "RN"
+		Assign in_Room "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "RS"
+		Assign in_RoomStatus "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "S1"
+		Assign in_SubTotal1 "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "SC"
+		Assign in_ServiceCharge "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "SO"
+		Assign in_SalesOutlet "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "T1"
+		Assign in_Tax1 "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "TA"
+		Assign in_TotalAmount "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "TI"
+		Assign in_Time "$(v_FieldData)"
+	if "$(v_FieldID)" EQ "VM"
+		Assign in_Voicemail "$(v_FieldData)"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:ProcessField_CheckMinibar
+
+	if "$(f_GotPreviousMinibar)" EQ "TRUE"
+		Call HandlePS_MultipleMinibar
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClearFieldData
+;   This label is called by the ReceiveRecord label before we begin to read
+;   the complete record to avoid confusion between fields data on a previous
+;   record or the current record.
+:ClearFieldData
+
+	Assign RecType ""
+	Assign v_LRType ""
+	Assign v_LRField ""
+
+	Assign f_GotPreviousMinibar "FALSE"
+
+	Assign in_AnswerStatus ""
+	Assign in_BillBalance ""
+	Assign in_ClearText ""
+	Assign in_Date ""
+	Assign in_DialledDigits ""
+	Assign in_Discount1 ""
+	Assign in_Duration ""
+	Assign in_Item "9999"
+	Assign in_MessageID ""
+	Assign in_MessageText ""
+	Assign in_MeterPulse "0"
+	Assign in_PostID ""
+	Assign in_PostingRoute "0"
+	Assign in_PostingType ""
+	Assign in_Quantity "1"
+	Assign in_Reservation ""
+	Assign in_Room ""
+	Assign in_RoomStatus ""
+	Assign in_SalesOutlet ""
+	Assign in_ServiceCharge ""
+	Assign in_SubTotal1 ""
+	Assign in_Tax1 ""
+	Assign in_Time ""
+	Assign in_TotalAmount "0"
+	Assign in_UserID "0"
+	Assign in_Voicemail ""
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRE
+;   This label is called when we have received a Room Data (RE) record
+;   in the ReceiveRecord label.
+:HandleRE
+
+	if "$(in_RoomStatus)" NE ""
+		CreateRoomStatus "$(in_Room)" "$(in_RoomStatus)"
+
+	if "$(in_Voicemail)" EQ "Y"
+		CreateMessageWaiting "$(in_Room)" "TRUE"
+	if "$(in_Voicemail)" EQ "N"
+		CreateMessageWaiting "$(in_Room)" "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandlePS
+;   This label is called when we have received a Posting Simple (PS) record
+;   in the ReceiveRecord label.
+:HandlePS
+
+	if "$(in_PostingType)" EQ "T"
+		Call ParseTime
+	if "$(in_PostingType)" EQ "T"
+		Call ParseDuration
+	if "$(in_PostingType)" EQ "T"
+		Call ParseDate
+	if "$(in_PostingType)" EQ "T"
+		PassToDataCollection 0      <in_Date:DATE:8:DD:MM:YY><#13>
+	if "$(in_PostingType)" EQ "T"
+		PassToDataCollection <in_Room:TEXT:5:RJ,SP>   <in_Time:TIME:5:HH:MM> <in_Duration:TIME:8:HH:MM:SS>  <in_PostingRoute:TEXT:2:LJ,SP>              <in_DialledDigits:TEXT:15:LJ,SP><in_MeterPulse:TEXT:5:RJ,SP>
+	if "$(in_PostingType)" EQ "T"
+		Goto HandlePS_SendPA
+
+	if "$(s_CombinedServicesImplemented)" EQ "YES"
+		Goto HandlePS_CombinedServices
+
+	if "$(s_SalesOutletIsID)" EQ "YES"
+		Assign in_Item "$(in_SalesOutlet)"
+
+	if "$(in_TotalAmount)" EQ "0"
+		Goto HandlePS_CheckZeroBillPosting
+
+	if "$(in_PostingType)" NE "T"
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "$(in_Item)" "$(in_Quantity)" "$(in_TotalAmount)" "$(in_ClearText)"
+
+	Goto HandlePS_SendPA
+
+:HandlePS_MultipleMinibar
+
+	if "$(in_Item)" EQ "9999"
+		Return
+
+	CreateMinibar "$(in_Room)" "$(in_UserID)" "$(in_Item)" "$(in_Quantity)" "$(in_TotalAmount)" "$(in_ClearText)"
+
+	Assign in_Item "9999"
+	Assign in_Quantity "1"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+	Return
+
+:HandlePS_CombinedServices
+
+	if "$(in_TotalAmount)" EQ "0"
+		Goto HandlePS_SendPA
+
+	if "$(in_SalesOutlet)" EQ ""
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "3" "1" "$(in_TotalAmount)" "Internet Charge"
+	if "$(in_SalesOutlet)" EQ "2"
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "$(in_Item)" "$(in_Quantity)" "$(in_TotalAmount)" "$(in_ClearText)"
+	if "$(in_SalesOutlet)" EQ "3"
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "3" "1" "$(in_TotalAmount)" "Internet Charge"
+	if "$(in_SalesOutlet)" EQ "4"
+		CreateCallPkg "$(in_Room)" "1" "4" "1"
+	if "$(in_SalesOutlet)" EQ "5"
+		CreateCallPkg "$(in_Room)" "1" "5" "1"
+	if "$(in_SalesOutlet)" EQ "6"
+		CreateCallPkg "$(in_Room)" "1" "6" "1"
+	if "$(in_SalesOutlet)" EQ "7"
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "7" "1" "$(in_TotalAmount)" "Television Charge"
+
+	Goto HandlePS_SendPA
+
+:HandlePS_CheckZeroBillPosting
+
+	if "$(s_IgnoreZeroBillPosting)" EQ "YES"
+		Goto HandlePS_SendPA
+
+	if "$(in_PostingType)" NE "T"
+		CreateMinibar "$(in_Room)" "$(in_UserID)" "$(in_Item)" "$(in_Quantity)" "$(in_TotalAmount)" "$(in_ClearText)"
+
+	Goto HandlePS_SendPA
+
+:HandlePS_SendPA
+
+	if "$(s_PA)" NE "TRUE"
+		Goto HandlePS_SkipPA
+
+//	We should be sending PA events - Build the record
+	Assign SendRec "PA|"
+
+	Call GetDateTime
+
+	if "$(s_PADA)" NE "TRUE"
+		Goto HandlePS_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:HandlePS_SkipDate
+
+	if "$(s_PATI)" NE "TRUE"
+		Goto HandlePS_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:HandlePS_SkipTime
+
+	if "$(s_PARN)" NE "TRUE"
+		Goto HandlePS_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(in_Room)|"
+
+:HandlePS_SkipRoomNumber
+
+	if "$(s_PAAS)" NE "TRUE"
+		Goto HandlePS_SkipAnswer
+
+	Assign SendRec "$(SendRec)ASOK|"
+
+:HandlePS_SkipAnswer
+
+	if "$(s_PAP#)" NE "TRUE"
+		Goto HandlePS_SkipPostID
+
+	Assign SendRec "$(SendRec)P#$(in_PostID)|"
+
+:HandlePS_SkipPostID
+
+	if "$(s_PACT)" NE "TRUE
+		Goto HandlePS_SkipClearText
+
+	Assign SendRec "$(SendRec)CT$(in_ClearText)|"
+
+:HandlePS_SkipClearText
+
+	if "$(s_PASO)" NE "TRUE"
+		Goto HandlePS_SkipSalesOutlet
+
+	Assign SendRec "$(SendRec)SO$(in_SalesOutlet)|"
+
+:HandlePS_SkipSalesOutlet
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+:HandlePS_SkipPA
+
+	Assign f_GotPreviousMinibar "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWR
+;   This label is called when we have received a Wakeup Request (WR) record
+;   in the ReceiveRecord label.
+:HandleWR
+
+	Call ParseTime
+
+	CreateSetWakeup "$(in_Room)" "" "<in_Time:TIME:4:HHMM>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWC
+;   This label is called when we have received a Wakeup Clear (WC) record
+;   in the ReceiveRecord label.
+:HandleWC
+
+	if "$(in_Time)" EQ ""
+		CreateClearAllWakeup "$(in_Room)" ""
+	if "$(in_Time)" EQ ""
+		Return
+
+	Call ParseTime
+
+	CreateClearWakeup "$(in_Room)" "" "<in_Time:TIME:4:HHMM>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWA
+;   This label is called when we have received a Wakeup Answer (WA) record
+;   in the ReceiveRecord label.
+:HandleWA
+
+	Call ParseTime
+
+	if "$(in_AnswerStatus)" EQ "OK"
+		CreateWakeupDelivered "$(in_Room)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>"
+	if "$(in_AnswerStatus)" EQ "OK"
+		Return
+
+	if "$(in_AnswerStatus)" EQ "NR"
+		CreateWakeupFailed "$(in_Room)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>"
+	if "$(in_AnswerStatus)" EQ "NR"
+		Return
+
+	if "$(in_AnswerStatus)" EQ "BY"
+		CreateWakeupFailed "$(in_Room)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>"
+	if "$(in_AnswerStatus)" EQ "BY"
+		Return
+
+	Echo If: Unknown Answer Status: "$(in_AnswerStatus)".
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXR
+;   This label is called when we have received a Bill Enquiry (XR) record
+;   in the ReceiveRecord label.
+:HandleXR
+
+	CreateBillEnquiry "$(in_Room)" "$(in_Reservation)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXC
+;   This label is called when we have received an Express Checkout Request
+;  (XC) record in the ReceiveRecord label.
+:HandleXC
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXM
+;   This label is called when we have received a Message Request (XM)
+;   record in the ReceiveRecord label.
+:HandleXM
+
+	CreateMWMessage "$(in_Room)" "$(in_MessageID)" "XM_REQUEST" "new" "$(in_Reservation)" "XM"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXD
+;   This label is called when we have received a Message Deleted (XD)
+;   record in the ReceiveRecord label.
+:HandleXD
+
+	CreateMWMessage "$(in_Room)" "$(in_MessageID)" "XD_DELETED" "new" "$(in_Reservation)" "XD"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDR
+;   This label is called when we have received a Database Swap Request (DR)
+:HandleDR
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "Request"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "Request"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ParseTime
+;   This label is called when we need to parse a time on an incoming
+;   record.
+:ParseTime
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Time)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Er: Received an invalid time in the received record.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ParseDate
+;   This label is called when we need to parse a date on an incoming
+;   record.
+:ParseDate
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD>"
+	Assign _G_IN_RECORD "$(in_Date)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Er: Received an invalid duration in the received record.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ParseDuration
+;   This label is called when we need to parse a duration on an incoming
+;   record.
+:ParseDuration
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Duration:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Duration)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Er: Received an invalid duration in the received record.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLRC
+;   This label is called just before we send a record to deal with the LRC
+;   CheckSum character
+:HandleLRC
+
+	if "$(f_DoLRC)" NE "NO"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(f_DoLRC)" NE "NO"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(f_DoLRC)" EQ "NO"
+		Assign SendRec "<#2>$(SendRec)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+
+	if "$(f_Connection)" NE "SERIAL"
+		Goto SR_GotACK
+
+	StartWaitTimer 10
+
+:SR_WaitForACK
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SR_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SR_TimeoutWaitingForACK
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+	Goto SR_WaitForACK
+
+:SR_GotACK
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:SR_TimeoutWaitingForACK
+
+	Echo If: Timeout waiting for ACK, resending record.
+
+Goto SendRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GetDateTime
+;   This label is called when we need to send a date and time in an
+;   outgoing record.
+:GetDateTime
+
+	Assign Date "<_G_NOW:DATE:6:YYMMDD>"
+	Assign Time "<_G_NOW:TIME:6:HHMMSS>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLS
+;   This label is called when we need to send a LinkStart (LS) message
+;   to the client.
+:DoLS
+
+	Call GetDateTime
+
+	Assign SendRec "LS|DA$(Date)|TI$(Time)|<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLE
+;   This label is called when we need to send a LinkEnd (LE) message
+;   to the client.
+:DoLE
+
+	Call GetDateTime
+
+	Assign SendRec "LE|DA$(Date)|TI$(Time)|<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+	Assign f_LinkAlive "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLE
+;   This label is called when we have received a LinkEnd (LE) record
+;   in the ReceiveRecord label.
+:HandleLE
+
+	Assign f_LinkAlive "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLR
+;   This label is called when we have received each field ID of a LinkRecord
+;   (LR) record in the ReceiveLinkRecord label.
+:HandleLR
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 100
+
+	if "$(v_LRType)" EQ "GI"
+		Call HandleLR_GI
+	if "$(v_LRType)" EQ "GO"
+		Call HandleLR_GO
+	if "$(v_LRType)" EQ "GC"
+		Call HandleLR_GC
+	if "$(v_LRType)" EQ "RE"
+		Call HandleLR_RE
+	if "$(v_LRType)" EQ "PA"
+		Call HandleLR_PA
+	if "$(v_LRType)" EQ "WR"
+		Call HandleLR_WR
+	if "$(v_LRType)" EQ "WC"
+		Call HandleLR_WC
+	if "$(v_LRType)" EQ "XB"
+		Call HandleLR_XB
+	if "$(v_LRType)" EQ "XC"
+		Call HandleLR_XC
+	if "$(v_LRType)" EQ "XD"
+		Call HandleLR_XD
+	if "$(v_LRType)" EQ "XI"
+		Call HandleLR_XI
+	if "$(v_LRType)" EQ "XL"
+		Call HandleLR_XL
+	if "$(v_LRType)" EQ "XR"
+		Call HandleLR_XR
+	if "$(v_LRType)" EQ "XT"
+		Call HandleLR_XT
+
+Return
+
+:HandleLR_GI
+
+	Assign s_GI "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_GIDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_GITI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_GIRN "TRUE"
+	if "$(v_LRField)" EQ "GS"
+		Assign s_GIGS "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_GIG# "TRUE"
+	if "$(v_LRField)" EQ "GN"
+		Assign s_GIGN "TRUE"
+	if "$(v_LRField)" EQ "GF"
+		Assign s_GIGF "TRUE"
+	if "$(v_LRField)" EQ "GT"
+		Assign s_GIGT "TRUE"
+	if "$(v_LRField)" EQ "GA"
+		Assign s_GIGA "TRUE"
+	if "$(v_LRField)" EQ "GD"
+		Assign s_GIGD "TRUE"
+	if "$(v_LRField)" EQ "GV"
+		Assign s_GIGV "TRUE"
+	if "$(v_LRField)" EQ "GL"
+		Assign s_GIGL "TRUE"
+	if "$(v_LRField)" EQ "GG"
+		Assign s_GIGG "TRUE"
+	if "$(v_LRField)" EQ "NP"
+		Assign s_GINP "TRUE"
+	if "$(v_LRField)" EQ "TV"
+		Assign s_GITV "TRUE"
+	if "$(v_LRField)" EQ "VR"
+		Assign s_GIVR "TRUE"
+	if "$(v_LRField)" EQ "MR"
+		Assign s_GIMR "TRUE"
+	if "$(v_LRField)" EQ "A0"
+		Assign s_GIA0 "TRUE"
+	if "$(v_LRField)" EQ "A1"
+		Assign s_GIA1 "TRUE"
+	if "$(v_LRField)" EQ "A2"
+		Assign s_GIA2 "TRUE"
+	if "$(v_LRField)" EQ "A3"
+		Assign s_GIA3 "TRUE"
+	if "$(v_LRField)" EQ "A4"
+		Assign s_GIA4 "TRUE"
+	if "$(v_LRField)" EQ "A5"
+		Assign s_GIA5 "TRUE"
+	if "$(v_LRField)" EQ "A6"
+		Assign s_GIA6 "TRUE"
+	if "$(v_LRField)" EQ "A7"
+		Assign s_GIA7 "TRUE"
+	if "$(v_LRField)" EQ "A8"
+		Assign s_GIA8 "TRUE"
+	if "$(v_LRField)" EQ "A9"
+		Assign s_GIA9 "TRUE"
+	if "$(v_LRField)" EQ "EN"
+		Assign s_GIEN "TRUE"
+	if "$(v_LRField)" EQ "ES"
+		Assign s_GIES "TRUE"
+	if "$(v_LRField)" EQ "EP"
+		Assign s_GIEP "TRUE"
+	if "$(v_LRField)" EQ "WS"
+		Assign s_GIWS "TRUE"
+	if "$(v_LRField)" EQ "SF"
+		Assign s_GISF "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_GO
+
+	Assign s_GO "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_GODA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_GOTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_GORN "TRUE"
+	if "$(v_LRField)" EQ "GS"
+		Assign s_GOGS "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_GOG# "TRUE"
+	if "$(v_LRField)" EQ "EN"
+		Assign s_GOEN "TRUE"
+	if "$(v_LRField)" EQ "ES"
+		Assign s_GOES "TRUE"
+	if "$(v_LRField)" EQ "EP"
+		Assign s_GOEP "TRUE"
+	if "$(v_LRField)" EQ "WS"
+		Assign s_GOWS "TRUE"
+	if "$(v_LRField)" EQ "SF"
+		Assign s_GOSF "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_GC
+
+	Assign s_GC "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_GCDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_GCTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_GCRN "TRUE"
+	if "$(v_LRField)" EQ "GS"
+		Assign s_GCGS "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_GCG# "TRUE"
+	if "$(v_LRField)" EQ "RO"
+		Assign s_GCRO "TRUE"
+	if "$(v_LRField)" EQ "GN"
+		Assign s_GCGN "TRUE"
+	if "$(v_LRField)" EQ "GF"
+		Assign s_GCGF "TRUE"
+	if "$(v_LRField)" EQ "GT"
+		Assign s_GCGT "TRUE"
+	if "$(v_LRField)" EQ "GA"
+		Assign s_GCGA "TRUE"
+	if "$(v_LRField)" EQ "GD"
+		Assign s_GCGD "TRUE"
+	if "$(v_LRField)" EQ "GV"
+		Assign s_GCGV "TRUE"
+	if "$(v_LRField)" EQ "GL"
+		Assign s_GCGL "TRUE"
+	if "$(v_LRField)" EQ "GG"
+		Assign s_GCGG "TRUE"
+	if "$(v_LRField)" EQ "NP"
+		Assign s_GCNP "TRUE"
+	if "$(v_LRField)" EQ "TV"
+		Assign s_GCTV "TRUE"
+	if "$(v_LRField)" EQ "VR"
+		Assign s_GCVR "TRUE"
+	if "$(v_LRField)" EQ "MR"
+		Assign s_GCMR "TRUE"
+	if "$(v_LRField)" EQ "A0"
+		Assign s_GCA0 "TRUE"
+	if "$(v_LRField)" EQ "A1"
+		Assign s_GCA1 "TRUE"
+	if "$(v_LRField)" EQ "A2"
+		Assign s_GCA2 "TRUE"
+	if "$(v_LRField)" EQ "A3"
+		Assign s_GCA3 "TRUE"
+	if "$(v_LRField)" EQ "A4"
+		Assign s_GCA4 "TRUE"
+	if "$(v_LRField)" EQ "A5"
+		Assign s_GCA5 "TRUE"
+	if "$(v_LRField)" EQ "A6"
+		Assign s_GCA6 "TRUE"
+	if "$(v_LRField)" EQ "A7"
+		Assign s_GCA7 "TRUE"
+	if "$(v_LRField)" EQ "A8"
+		Assign s_GCA8 "TRUE"
+	if "$(v_LRField)" EQ "A9"
+		Assign s_GCA9 "TRUE"
+	if "$(v_LRField)" EQ "EN"
+		Assign s_GCEN "TRUE"
+	if "$(v_LRField)" EQ "ES"
+		Assign s_GCES "TRUE"
+	if "$(v_LRField)" EQ "EP"
+		Assign s_GCEP "TRUE"
+	if "$(v_LRField)" EQ "EO"
+		Assign s_GCEO "TRUE"
+	if "$(v_LRField)" EQ "ET"
+		Assign s_GCET "TRUE"
+	if "$(v_LRField)" EQ "EI"
+		Assign s_GCEI "TRUE"
+	if "$(v_LRField)" EQ "WS"
+		Assign s_GCWS "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_RE
+
+	Assign s_RE "TRUE"
+
+	if "$(v_LRField)" EQ "RN"
+		Assign s_RERN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_REG# "TRUE"
+	if "$(v_LRField)" EQ "CS"
+		Assign s_RECS "TRUE"
+	if "$(v_LRField)" EQ "DN"
+		Assign s_REDN "TRUE"
+	if "$(v_LRField)" EQ "ML"
+		Assign s_REML "TRUE"
+	if "$(v_LRField)" EQ "MR"
+		Assign s_REMR "TRUE"
+	if "$(v_LRField)" EQ "TV"
+		Assign s_RETV "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_PA
+
+	Assign s_PA "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_PADA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_PATI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_PARN "TRUE"
+	if "$(v_LRField)" EQ "AS"
+		Assign s_PAAS "TRUE"
+	if "$(v_LRField)" EQ "WS"
+		Assign s_PAWS "TRUE"
+	if "$(v_LRField)" EQ "SO"
+		Assign s_PASO "TRUE"
+	if "$(v_LRField)" EQ "CT"
+		Assign s_PACT "TRUE"
+	if "$(v_LRField)" EQ "P#"
+		Assign s_PAP# "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_WR
+
+
+	Assign s_WR "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_WRDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_WRTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_WRRN "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_WC
+
+	Assign s_WC "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_WCDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_WCTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_WCRN "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XB
+
+	Assign s_XB "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XBDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XBTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XBRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XBG# "TRUE"
+	if "$(v_LRField)" EQ "BA"
+		Assign s_XBBA "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XC
+
+	Assign s_XC "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XCDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XCTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XCRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XCG# "TRUE"
+	if "$(v_LRField)" EQ "BA"
+		Assign s_XCBA "TRUE"
+	if "$(v_LRField)" EQ "AS"
+		Assign s_XCAS "TRUE"
+	if "$(v_LRField)" EQ "CT"
+		Assign s_XCCT "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XD
+
+	Assign s_XD "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XDDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XDTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XDRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XDG# "TRUE"
+	if "$(v_LRField)" EQ "MI"
+		Assign s_XDMI "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XI
+
+	Assign s_XI "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XIDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XITI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XIRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XIG# "TRUE"
+	if "$(v_LRField)" EQ "BD"
+		Assign s_XIBD "TRUE"
+	if "$(v_LRField)" EQ "BI"
+		Assign s_XIBI "TRUE"
+	if "$(v_LRField)" EQ "DC"
+		Assign s_XIDC "TRUE"
+	if "$(v_LRField)" EQ "F#"
+		Assign s_XIF# "TRUE"
+	if "$(v_LRField)" EQ "FD"
+		Assign s_XIFD "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XL
+
+	Assign s_XL "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XLDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XLTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XLRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XLG# "TRUE"
+	if "$(v_LRField)" EQ "MI"
+		Assign s_XLMI "TRUE"
+	if "$(v_LRField)" EQ "MT"
+		Assign s_XLMT "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XR
+
+	Assign s_XR "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XRDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XRTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XRRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XRG# "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+
+:HandleLR_XT
+
+	Assign s_XT "TRUE"
+
+	if "$(v_LRField)" EQ "DA"
+		Assign s_XTDA "TRUE"
+	if "$(v_LRField)" EQ "TI"
+		Assign s_XTTI "TRUE"
+	if "$(v_LRField)" EQ "RN"
+		Assign s_XTRN "TRUE"
+	if "$(v_LRField)" EQ "G#"
+		Assign s_XTG# "TRUE"
+	if "$(v_LRField)" EQ "MI"
+		Assign s_XTMI "TRUE"
+	if "$(v_LRField)" EQ "MT"
+		Assign s_XTMT "TRUE"
+
+	if "$(f_Connection)" NE "IP"
+		Sleep 20
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLS
+;   This label is called when we have received a LinkStart (LS) record
+;   in the ReceiveRecord label.
+:HandleLS
+
+	Call GetDateTime
+
+	if "$(f_LinkAlive)" EQ "TRUE"
+		Assign SendRec "LA|DA$(Date)|TI$(Time)|<#3>"
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Assign SendRec "LS|DA$(Date)|TI$(Time)|<#3>"
+
+	Call HandleLRC
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLA
+;   This label is called when we have received a LinkAlive (LA) record
+;   in the ReceiveRecord label.
+:HandleLA
+
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto HandleLA_SendResponse
+
+	if "$(s_RespondToLA)" NE "YES"
+		Return
+
+:HandleLA_SendResponse
+
+	Call GetDateTime
+
+	Assign SendRec "LA|DA$(Date)|TI$(Time)|<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+	Assign f_LinkAlive "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLD
+;   This label is called when we have received a LinkDescription (LD) record
+;   in the ReceiveRecord label.  This indicates that we are about to receive
+;   a LinkRecord record, so we need to clear out all our current LR settings.
+:HandleLD
+
+	Assign s_GI "FALSE"
+	Assign s_GO "FALSE"
+	Assign s_GC "FALSE"
+	Assign s_RE "FALSE"
+	Assign s_PA "FALSE"
+	Assign s_WC "FALSE"
+	Assign s_WR "FALSE"
+	Assign s_XL "FALSE"
+	Assign s_XR "FALSE"
+	Assign s_XI "FALSE"
+	Assign s_XB "FALSE"
+	Assign s_XC "FALSE"
+	Assign s_XT "FALSE"
+	Assign s_XD "FALSE"
+
+	Assign s_GIDA "FALSE"
+	Assign s_GITI "FALSE"
+	Assign s_GIRN "FALSE"
+	Assign s_GIGS "FALSE"
+	Assign s_GIG# "FALSE"
+	Assign s_GIGN "FALSE"
+	Assign s_GIGF "FALSE"
+	Assign s_GIGT "FALSE"
+	Assign s_GIGA "FALSE"
+	Assign s_GIGD "FALSE"
+	Assign s_GIGV "FALSE"
+	Assign s_GIGL "FALSE"
+	Assign s_GIGG "FALSE"
+	Assign s_GINP "FALSE"
+	Assign s_GITV "FALSE"
+	Assign s_GIVR "FALSE"
+	Assign s_GIMR "FALSE"
+	Assign s_GIA0 "FALSE"
+	Assign s_GIA1 "FALSE"
+	Assign s_GIA2 "FALSE"
+	Assign s_GIA3 "FALSE"
+	Assign s_GIA4 "FALSE"
+	Assign s_GIA5 "FALSE"
+	Assign s_GIA6 "FALSE"
+	Assign s_GIA7 "FALSE"
+	Assign s_GIA8 "FALSE"
+	Assign s_GIA9 "FALSE"
+	Assign s_GIEN "FALSE"
+	Assign s_GIES "FALSE"
+	Assign s_GIEP "FALSE"
+	Assign s_GIWS "FALSE"
+	Assign s_GISF "FALSE"
+
+	Assign s_GODA "FALSE"
+	Assign s_GOTI "FALSE"
+	Assign s_GORN "FALSE"
+	Assign s_GOGS "FALSE"
+	Assign s_GOG# "FALSE"
+	Assign s_GOEN "FALSE"
+	Assign s_GOES "FALSE"
+	Assign s_GOEP "FALSE"
+	Assign s_GOWS "FALSE"
+	Assign s_GOSF "FALSE"
+
+	Assign s_GCDA "FALSE"
+	Assign s_GCTI "FALSE"
+	Assign s_GCRN "FALSE"
+	Assign s_GCGS "FALSE"
+	Assign s_GCG# "FALSE"
+	Assign s_GCRO "FALSE"
+	Assign s_GCGN "FALSE"
+	Assign s_GCGF "FALSE"
+	Assign s_GCGT "FALSE"
+	Assign s_GCGA "FALSE"
+	Assign s_GCGD "FALSE"
+	Assign s_GCGV "FALSE"
+	Assign s_GCGL "FALSE"
+	Assign s_GCGG "FALSE"
+	Assign s_GCNP "FALSE"
+	Assign s_GCTV "FALSE"
+	Assign s_GCVR "FALSE"
+	Assign s_GCMR "FALSE"
+	Assign s_GCA0 "FALSE"
+	Assign s_GCA1 "FALSE"
+	Assign s_GCA2 "FALSE"
+	Assign s_GCA3 "FALSE"
+	Assign s_GCA4 "FALSE"
+	Assign s_GCA5 "FALSE"
+	Assign s_GCA6 "FALSE"
+	Assign s_GCA7 "FALSE"
+	Assign s_GCA8 "FALSE"
+	Assign s_GCA9 "FALSE"
+	Assign s_GCEN "FALSE"
+	Assign s_GCES "FALSE"
+	Assign s_GCEP "FALSE"
+	Assign s_GCEO "FALSE"
+	Assign s_GCET "FALSE"
+	Assign s_GCEI "FALSE"
+	Assign s_GCWS "FALSE"
+
+	Assign s_RERN "FALSE"
+	Assign s_REG# "FALSE"
+	Assign s_RECS "FALSE"
+	Assign s_REDN "FALSE"
+	Assign s_REML "FALSE"
+	Assign s_REMR "FALSE"
+	Assign s_RETV "FALSE"
+
+	Assign s_PADA "FALSE"
+	Assign s_PATI "FALSE"
+	Assign s_PARN "FALSE"
+	Assign s_PAAS "FALSE"
+	Assign s_PAWS "FALSE"
+	Assign s_PASO "FALSE"
+	Assign s_PACT "FALSE"
+	Assign s_PAP# "FALSE"
+
+	Assign s_WRDA "FALSE"
+	Assign s_WRTI "FALSE"
+	Assign s_WRRN "FALSE"
+
+	Assign s_WCDA "FALSE"
+	Assign s_WCTI "FALSE"
+	Assign s_WCRN "FALSE"
+
+	Assign s_XBDA "FALSE"
+	Assign s_XBTI "FALSE"
+	Assign s_XBRN "FALSE"
+	Assign s_XBG# "FALSE"
+	Assign s_XBBA "FALSE"
+
+	Assign s_XCDA "FALSE"
+	Assign s_XCTI "FALSE"
+	Assign s_XCRN "FALSE"
+	Assign s_XCG# "FALSE"
+	Assign s_XCBA "FALSE"
+	Assign s_XCAS "FALSE"
+	Assign s_XCCT "FALSE"
+
+	Assign s_XDDA "FALSE"
+	Assign s_XDTI "FALSE"
+	Assign s_XDRN "FALSE"
+	Assign s_XDG# "FALSE"
+	Assign s_XDMI "FALSE"
+
+	Assign s_XIDA "FALSE"
+	Assign s_XITI "FALSE"
+	Assign s_XIRN "FALSE"
+	Assign s_XIG# "FALSE"
+	Assign s_XIBD "FALSE"
+	Assign s_XIBI "FALSE"
+	Assign s_XIDC "FALSE"
+	Assign s_XIF# "FALSE"
+	Assign s_XIFD "FALSE"
+
+	Assign s_XLDA "FALSE"
+	Assign s_XLTI "FALSE"
+	Assign s_XLRN "FALSE"
+	Assign s_XLG# "FALSE"
+	Assign s_XLMI "FALSE"
+	Assign s_XLMT "FALSE"
+
+	Assign s_XRDA "FALSE"
+	Assign s_XRTI "FALSE"
+	Assign s_XRRN "FALSE"
+	Assign s_XRG# "FALSE"
+
+	Assign s_XTDA "FALSE"
+	Assign s_XTTI "FALSE"
+	Assign s_XTRN "FALSE"
+	Assign s_XTG# "FALSE"
+	Assign s_XTMI "FALSE"
+	Assign s_XTMT "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
