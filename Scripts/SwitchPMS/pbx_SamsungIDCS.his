@@ -1,0 +1,854 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  Interface configuration script for controlling a Samsung PBX through
+;  the Samsung IDCS protocol.
+;
+;  Protocol defined by document:-
+;
+;      Title:     Samsung iDCS 500 - PMS Interface Protocol - User Guide
+;      Revision:  ED 1 : 2002.03.26
+;
+;
+;                                                               ph-300402
+;
+;	Room Status Codes from this PBX:
+;		ID - PBX Desc (Tiger Desc)
+;		95 - Available (Vacant Clean)
+;		96 - Occupied (Occupied?)
+;		97 - Needs Cleaning (Vacant Dirty)
+;		98 - Fix Room (??)
+;		99 - Hold (??)
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define SendRec
+define ReceiveRec
+define RecType
+
+define WorkVal
+define f_sending
+define send_tally
+
+define DoubleCheckin
+
+define f_DownloadingDialPlan
+
+define in_BCC
+define in_seqno
+define in_portno
+define in_extnno
+define out_portno
+define MsgLength
+define MsgCount
+define srcName
+
+define in_Room
+define in_Date
+define in_Time
+define in_Status
+define in_Desc
+define in_MaidID
+define in_Cost
+
+; ************************************************************************
+;  INIT
+;   This part of the script is run once at the program start-up
+;
+:INIT
+
+// OPT: If we are to perform a checkin and checkout before a checkin to clear
+//		any old messages set the next line to TRUE.
+assign DoubleCheckin "FALSE"
+
+assign f_sending "FALSE"
+
+OpenPort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+; OPT: If, for some *highly* unlikely reason, you do not want checkin
+;      details to be sent to the DCS, uncomment this next line.
+//goto HandleOKAndExit
+
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  FlagProcessed NOT
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  goto CheckIncoming
+
+; Determine the port number
+BCDEncode "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+echo Checkin Extn Number: $(_EV_EXTNNUMBER), ($(out_portno))
+
+if "$(DoubleCheckin)" NE "TRUE"
+	goto SkipDoubleCheckin
+
+//**** Begin double checkin *****
+
+; Set room status.
+
+assign SendRec "<#0><#11><#3><#11><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#5><#0><#0>"
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+call SendRecord
+
+; Checkin
+
+assign SendRec "<#0><#26><#3><#2><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0><#0><#0><#0><_EV_NAMEDISPLAY:TEXT:11:LJ,SP><#0><#0>"
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+call SendRecord
+
+; Checkout
+
+assign SendRec "<#0><#10><#3><#5><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0>"
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+call SendRecord
+
+//**** End double checkin *****
+
+:SkipDoubleCheckin
+
+assign SendRec "<#0><#11><#3><#11><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#5><#0><#0>"
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+; Build the record and its BCC character
+assign SendRec "<#0><#26><#3><#2><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0><#0><#0><#0><_EV_NAMEDISPLAY:TEXT:11:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^               ^   ^                              ^
+;               |    |   |   Prefixed        Station Number           Phone Deposit   |   |                              Staff Code
+;               |    |   Msg ID                                                       |   Name
+;               |    Prefixed                                                         Pay Method
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+; OPT: If, for some *highly* unlikely reason, you do not want checkout
+;      details to be sent to the DCS, uncomment this next line.
+//goto HandleOKAndExit
+
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  FlagProcessed NOT
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  goto CheckIncoming
+
+; Determine the port number
+BCDEncode "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+echo Checkout Extn Number: $(_EV_EXTNNUMBER), (<out_portno:TEXT:2:LJ,SP>)
+
+; Build the record and its BCC character
+assign SendRec "<#0><#10><#3><#5><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^
+;               |    |   |   Prefixed        Station Number           Staff Code
+;               |    |   Msg ID
+;               |    Prefixed
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+; OPT: If, for some *highly* unlikely reason, you do not want class of 
+;      service details to be sent to the DCS, uncomment this next line.
+//goto HandleOKAndExit
+
+; Determine the port number
+BCDEncode "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+  goto COS_UNBAR
+
+; *** Bar the line
+
+; Build the record and its BCC character
+assign SendRec "<#0><#10><#3><#5><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^
+;               |    |   |   Prefixed        Station Number           Staff Code
+;               |    |   Msg ID
+;               |    Prefixed
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+goto COS_DONE
+
+:COS_UNBAR
+
+assign SendRec "<#0><#11><#3><#11><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#5><#0><#0>"
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+; Build the record and its BCC character
+assign SendRec "<#0><#26><#3><#2><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0><#0><#0><#0><NAMEDISPLAY:TEXT:11:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^               ^   ^                              ^
+;               |    |   |   Prefixed        Station Number           Phone Deposit   |   |                              Staff Code
+;               |    |   Msg ID                                                       |   Name
+;               |    Prefixed                                                         Pay Method
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+:COS_DONE
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+; OPT: If, for some *highly* unlikely reason, you do not want room update
+;      details to be sent to the DCS, uncomment this next line.
+//goto HandleOKAndExit
+
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  FlagProcessed NOT
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  goto CheckIncoming
+
+; Determine the port number
+assign out_portno "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>"
+BCDEncode "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+; Build the record and its BCC character
+assign SendRec "<#0><#21><#3><#3><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><_EV_NAMEDISPLAY:TEXT:11:LJ,SP><#0><#0>"
+;               ^        ^   ^   ^               ^                        ^                              ^
+;               |        |   |   Prefixed        Station Number           |                              Staff Code
+;               |        |   Msg ID                                       Name
+;               |        Prefixed
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+; OPT: If, for some *highly* unlikely reason, you do not want room transfer
+;      details to be sent to the DCS, uncomment this next line.
+//goto HandleOKAndExit
+
+; Check in Destination
+
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  FlagProcessed NOT
+if "$(f_DownloadingDialPlan)" EQ "TRUE"
+  goto CheckIncoming
+
+; Determine the port number
+BCDEncode "<_EV_TRDESTEXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+; Set status to available
+assign SendRec "<#0><#11><#3><#11><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#5><#0><#0>"
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+; Check in dest room.
+
+; Build the record and its BCC character
+assign SendRec "<#0><#26><#3><#2><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0><#0><#0><#0><NAMEDISPLAY:TEXT:11:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^               ^   ^                              ^
+;               |    |   |   Prefixed        Station Number           Phone Deposit   |   |                              Staff Code
+;               |    |   Msg ID                                                       |   Name
+;               |    Prefixed                                                         Pay Method
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+; Checkout Source
+
+; Determine the port number
+BCDEncode "<_EV_EXTNNUMBER:TEXT:4:LJ,SP>" "LH"
+assign out_portno "$(_G_RESULT)"
+
+; Build the record and its BCC character
+assign SendRec "<#0><#10><#3><#5><#0><#0><#0><#0><out_portno:TEXT:2:LJ,SP><#0><#0>"
+;               ^    ^   ^   ^               ^                        ^
+;               |    |   |   Prefixed        Station Number           Staff Code
+;               |    |   Msg ID
+;               |    Prefixed
+;               Msg Length
+
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+; Go on to send it
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+
+; Allow up to 5 seconds for the record to come in.
+StartWaitTimer 5
+
+; We have already received the STX and it is in ReceiveRec
+
+; Read the next 2 characters from the port, it is the message Length
+ReadFromPort 2 2
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE ""
+  assign MsgLength "$(_PORTCHARS)"
+
+Assign MsgCount 1
+; Read the next 1 characters from the port, it is the 0x03.
+ReadFromPort 1 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+Assign MsgCount $(MsgCount) + 1
+
+ReadFromPort 1 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" NE ""
+  call GetRecType
+
+Assign MsgCount $(MsgCount) + 1
+
+:ReceiveRecord_ReadPort
+
+ReadFromPort 1
+Assign MsgCount $(MsgCount) + 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+; If it is an ETX, we need to process the record
+if "$(RecType)" EQ ""
+  goto NOT_DP
+
+if $(MsgCount) LT 12
+  goto DP
+
+:NOT_DP
+if "$(_PORTCHARS)" EQ "<#3>"
+  goto FINISHEDRECEIVING
+
+:DP
+
+; if our 5 seconds are up, ignore what we have so far.
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	goto QUITRECEIVING
+
+goto ReceiveRecord_ReadPort
+
+
+:FINISHEDRECEIVING
+
+Echo Rx: $(ReceiveRec)
+
+if "$(RecType)" EQ ""
+  goto ACKANDIGNORERECORD
+
+; Extract the fields from the record and process them to create the events.
+assign _G_IN_RECORD "$(ReceiveRec)"
+ParseInRecord
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+	goto ReceiveError
+
+if "$(RecType)" EQ "DIALPLAN"
+	call StoreDialplan
+
+:ACKANDIGNORERECORD
+
+Send <#6>
+Echo Tx: <#6>
+
+:QUITRECEIVING
+
+; If we are receiving part way through sending a record, we need to setup
+; the wait timer again and return.
+if "$(f_sending)" EQ "TRUE"
+  StartWaitTimer 5
+if "$(f_sending)" EQ "TRUE"
+  Return
+
+; If we are not part way through sending we need to exit the script.
+Exit
+
+; ************************************************************************
+;  GetRecType
+;   We have received 2 characters in $(_PORTCHARS) which indicates the
+;   record type.  We need to setup for the record.
+; ************************************************************************
+:GetRecType
+
+assign RecType ""
+if "$(_PORTCHARS)" EQ "<#208>"
+  assign RecType "DIALPLAN"
+
+if "$(_PORTCHARS)" EQ "<#240>"
+  assign RecType "REPLY"
+
+if "$(RecType)" EQ "DIALPLAN"
+  assignasis _G_IN_RECORDFORMAT "<#2><#0><#16><#3><#208><in_seqno:TEXT:2:SP><#0><#0><in_portno:TEXT:2:SP><in_extnno:TEXT:4:SP><in_BCC:TEXT:1:SP><#3>"
+
+if "$(RecType)" EQ "REPLY"
+  assignasis _G_IN_RECORDFORMAT "<#2><#0><#86><#3><#240><#0><#0><#0><#0><#0><#0>     <in_extnno:TEXT:4:SP>    <in_Date:TEXT:5:SP>    <in_Time:TEXT:5:SP>    <in_Status:TEXT:3:SP>     <in_Desc:TEXT:18:SP>   <in_MaidID:TEXT:8:SP>  <in_Cost:TEXT:8:SP><in_BCC:TEXT:1:SP><#3>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  StoreDialplan
+;   This routine stores the dial plan translation in in_portno and
+;   in_extnno.
+; ************************************************************************
+:StoreDialplan
+
+  if "$(f_DownloadingDialPlan)" EQ "FALSE"
+    Return
+
+  assign in_extnno "<in_extnno:TEXT:4:LJ,SP,AN>"
+  Echo Storing Dialplan entry: |$(in_portno)| |$(in_extnno)|
+  AddTranslationItem "DIALPLAN" "$(in_portno)" "$(in_extnno)"
+  
+  if "$(MsgLength)" EQ "<#0><#10>"
+    echo Finished Dialplan download
+  if "$(MsgLength)" EQ "<#0><#10>"
+    assign ReceiveRec ""
+  if "$(MsgLength)" EQ "<#0><#10>"
+    assign f_DownloadingDialPlan "FALSE"
+  if "$(MsgLength)" EQ "<#0><#10>"
+    Return
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when an error is found in the formatting of the record.
+; ************************************************************************
+:ReceiveError
+  Echo Error with Received Record - Record ignored
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  CreateRSEvent
+;    Creates the Room Status event.
+:CreateRSEvent
+
+if "$(in_Status)" GT 99
+  goto SKIPRSEVENT
+
+if "$(in_Status)" LT 95
+  goto SKIPRSEVENT
+  
+CreateRoomStatus "$(in_extnno)" "$(in_Status)"
+
+:SKIPRSEVENT
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  SendRecord
+;   Execution is sent here whenever we have a record in SendRec to send
+;   to the DCS.
+; ************************************************************************
+:SendRecord
+
+assign f_Sending "TRUE"
+
+; Send the ENQ
+call SENDENQ
+
+; OPT: We have sent and ENQ and we need to wait for an ACK in response to it.
+;      The parameter on the following line will allow you to change the amount
+;      of time we will wait for.
+StartWaitTimer 5
+
+:WAITFORACKTOENQ
+
+; Sleep to slow the processing down a bit.
+Sleep 100
+
+; Read a single character from the port
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Echo Rx: $(_PORTCHARS)
+
+; if it is an ACK
+if "$(_PORTCHARS)" EQ "<#6>"
+	Goto GOTACKTOENQ
+
+; if it is a NAK
+if "$(_PORTCHARS)" EQ "<#21>"
+	Goto SENDRECORD
+
+; If it is an ENQ, we have to yield
+if "$(_PORTCHARS)" EQ "<#5>"
+	Call SendAck
+if "$(_PORTCHARS)" EQ "<#5>"
+    StartWaitTimer 5
+if "$(_PORTCHARS)" EQ "<#5>"
+	Goto WAITFORSTX
+
+; If the wait timeout has expired...
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto SendRecord
+
+; We are still waiting for the ACK so go back
+Goto WAITFORACKTOENQ
+
+; We've received an ENQ which we've ACK'd but to allow ReceiveRecord to 
+; work we need wait for an STX.
+:WAITFORSTX
+  ReadFromPort 1
+  
+  ; If it's an STX then goto receive record
+  if "$(_PORTCHARS)" EQ "<#2>"
+    assign ReceiveRec "<#2>"
+  if "$(_PORTCHARS)" EQ "<#2>"
+    goto ReceiveRecord
+
+  ; If the wait timeout has expired... We can resume sending.
+  if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+    assign ReceiveRec ""
+  if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto SendRecord
+  
+  Goto WAITFORSTX
+
+; We have sent an ENQ character and received an ACK in response to it.
+:GOTACKTOENQ
+
+; Set a sending flag for use later
+assign send_tally 0
+
+:SendRecord_SendTheRecord
+
+if "$(send_tally)" GT "4"
+  return
+
+; Send the record and display it
+Send $(SendRec)
+Echo Tx: $(SendRec)
+assign send_tally $(send_tally) + 1
+
+; Start the await ACK timer
+StartWaitTimer 5
+
+:AWAITACKTOREC
+
+ReadFromPort 1
+
+; Timer has expired so we're obviously not being sent anything.  Quit
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Goto SendRecord_SendTheRecord
+
+; If we haven't had a response go back and wait
+if "$(_PORTCHARS)" EQ ""
+  Goto AWAITACKTOREC
+
+; If we get an ACK flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#6>"
+  Echo Rx: <#6>
+if "$(_PORTCHARS)" EQ "<#6>"
+  CALL HANDLEOK
+if "$(_PORTCHARS)" EQ "<#6>"
+  Return
+
+; If we get an ACK flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#21>"
+  Echo Rx: <#21>
+if "$(_PORTCHARS)" EQ "<#21>"
+  goto HANDLEFAILEDANDEXIT
+
+; If we get an SOH, we need to receive an incoming record
+if "$(_PORTCHARS)" EQ "<#1>"
+  assign ReceiveRec "<#1>"
+if "$(_PORTCHARS)" EQ "<#1>"
+  call ReceiveRecord
+
+Goto AWAITACKTOREC
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+assign f_sending "FALSE"
+
+; Read a character
+ReadFromPort 1
+
+; If there is one and it is STX, start the receive record with it.
+if "$(_PORTCHARS)" EQ "<#2>"
+  assign ReceiveRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+  goto ReceiveRecord
+
+; If there are no characters, we have finished
+if "$(_PORTCHARS)" NE ""
+  Echo Rx: $(_PORTCHARS)
+
+; If it is an ENQ, Send an ACK and stop receiving.
+if "$(_PORTCHARS)" EQ "<#5>"
+	Send <#6>
+if "$(_PORTCHARS)" EQ "<#5>"
+	Echo Tx: <#6>
+
+; Release back to the program, we have not received an STX
+GOTO FINISHED
+
+; ************************************************************************
+;  SENDENQ
+;   Sends an Enq (#5) character out of the port and echoes it to the
+;   communications display.
+
+:SENDENQ
+  Send <#5>
+  Echo Tx: <#5>
+RETURN
+
+; ************************************************************************
+;  SENDACK
+;   Sends an ACK (#6) character out of the port and echoes it to the
+;   communications display.
+
+:SENDACK
+  Send <#6>
+  Echo Tx: <#6>
+RETURN
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+FLAGPROCESSED OK
+Exit
+; ************************************************************************
+
+; ************************************************************************
+; HandleFailedAndExit
+;  Flag that the processing has failed and exit the script.
+:HandleFailedAndExit
+
+FLAGPROCESSED FAIL
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+; HANDLEOK
+;  Flag that the processing was successful.
+; ************************************************************************
+:HANDLEOK
+
+FLAGPROCESSED OK
+
+RETURN
+
+; ************************************************************************
+; FINISHED
+;  End the script.
+; ************************************************************************
+:FINISHED
+
+EXIT
+
+

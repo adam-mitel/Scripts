@@ -1,0 +1,1107 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.2.0
+; ************************************************************************
+;	
+;  This is the HI configuration script for interfacing to a Hicom PBX
+;  via TCP/IP.
+;
+;							       AU-24112011
+;
+;  Modifications - AU - 30/10/2016 - 50.0.2.0
+;	* Added support for responses when removing features from extensions which
+;	  do not exist on the PBX. Our interface will now move on.
+;
+;  Modifications - AU - 17/10/2013 - 50.0.0.1
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 30/10/2012
+;	* Changed the default language to English and added a section after Login
+;	  to change the PBX control set to English.  German is still available
+;	* Added Room Status section for internal call records
+;	* Added Serial or IP settings
+;
+;  Modifications - AU - 27/06/2012
+;	* Added support for Do Not Disturb (DND)
+;
+;  Modifications - AU - 07/06/2012
+;	* Added functionality for Digital Extensions using Extension Facilities
+;
+;  Modifications - AU - 31/05/2012
+;	* Added support for English commands
+;	* Removed sending the name in COS events
+;	* Removed sending COS in Room Update events
+;	* All events now use _EV_NAMEDISPLAY
+;	* Modified Logout method
+;
+;  Modifications - AU - 30/01/2012
+;	* Added a check in Room Update to Bar/Unbar the line
+;
+;  Modifications - AU - 24/01/2012
+;	* Modified Shutdown so that we send a Ctrl+X (Logout) on Shutdown
+;	* Modified TakeWhatsComing, SendRecord and CancelCommand to check
+;	  for Errors in the reply and act on it if we do
+;	* Modified HandleOKAndExit and IgnoreRecord to reset f_RetryCount
+;	* Modified RoomTransfer to resolve a check on the Destination Extension
+;	* Added new label ReadEverything to clear the input buffer
+;	* Added Logout sequence to PORT_OPENED in case we are already logged in
+;
+;  Modifications - AU - 05/12/2011
+;	* Resolved issue with Room Transfer commands
+;
+;  Modifications - AU - 30/11/2011
+;	* Complete overhaul of script presentation and logic
+;
+;  Modifications - AU - 07/11/2011
+;	* Modified event labels to check if the Guest name is VACANT. If it
+;	  is we will ignore the record.
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+;
+define s_Connection
+define s_Language
+define s_Username
+define s_Password
+define s_BarCOS
+define s_UnbarCOS
+define s_ExtnLength
+define s_NameLength
+;
+define f_LoggedIn
+define f_CmdSent
+define f_Error
+define f_GotReplyString
+define f_RetryCount
+define f_Timeout
+;
+define g_GuestName
+;
+define v_ReplyString
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Set s_Connection type to IP or SERIAL.
+	Assign s_Connection "IP"
+
+//	OPT: Set the language which we should use to program the Hicom.  The only
+//	     other valid option than the default of "ENGLISH" is "GERMAN".  If
+//	     it is left as English we will change the command set to English on the
+//	     PBX.
+	Assign s_Language "ENGLISH"
+
+//	OPT: Set this to be the Username for logging into the Hicom.
+	Assign s_Username "tiger"
+
+//	OPT: Set this to be the Password for logging into the Hicom.
+	Assign s_Password "tigertms"
+
+//	OPT: The next 2 lines set the COS for Barred/Unbarred lines.
+	Assign s_BarCOS "1"
+	Assign s_UnbarCOS "9"
+
+//	OPT: The next line specifies the length of the extension numbers on the PBX.
+	Assign s_ExtnLength "5"
+
+//	OPT: The next line specifies the length of names to send to the PBX.
+	Assign s_NameLength "30"
+
+//	Do not edit below
+
+	Echo *** The script is set for $(s_Connection) ***
+
+	if "<s_Connection:TEXT:2:UC>" EQ "IP"
+		Exit
+
+	OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	Assign SendRec ""
+	Assign v_ReplyString ""
+	Assign f_LoggedIn "FALSE"
+	Assign f_CmdSent "FALSE"
+	Assign f_RetryCount 0
+
+	Echo Db: Port Opened
+
+	Call ReadEverything
+
+	Assign f_LoggedIn "FALSE"
+	Assign f_Error "FALSE"
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+	Echo Tx: Ctrl-X
+	Send <#24>
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+	if "$(_EV_RSCODE)" NE ""
+		Echo If: [RS] Creating Room Status $(_EV_RSCODE) for $(_EV_ROOMNUMBER).
+	if "$(_EV_RSCODE)" NE ""
+		CreateRoomStatus "$(_EV_ROOMNUMBER)" "$(_EV_RSCODE)"
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "$(_EV_NAMEDISPLAY)"
+	if "$(g_GuestName)" EQ ""
+		Echo Er: _EV_NAMEDISPLAY is empty on Checkin event $(_EV_ID)
+	if "$(g_GuestName)" EQ ""
+		Goto IgnoreRecord
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSV1=$(s_UnbarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSS1=$(s_UnbarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto Checkin_SkipDigital
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-SBCSU:STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,OPT=OPTI,TEXTSEL=ENGLISH;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "$(SendRec)" NE ""
+		Call SendRecord
+
+:Checkin_SkipDigital
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "VACANT"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSV1=$(s_BarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSS1=$(s_BarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCOS)"
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_BarCOS)"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSV1=$(WorkVal);"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSS1=$(WorkVal);"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "$(_EV_NAMEDISPLAY)"
+	if "$(g_GuestName)" EQ ""
+		Echo Er: _EV_NAMEDISPLAY is empty on Room Update event $(_EV_ID)
+	if "$(g_GuestName)" EQ ""
+		Goto IgnoreRecord
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomUpdate_SkipDigital
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-SBCSU:STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,OPT=OPTI,TEXTSEL=ENGLISH;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "$(SendRec)" NE ""
+		Call SendRecord
+
+:RoomUpdate_SkipDigital
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Echo Er: Skipping Checkout on Room Transfer Event $(_EV_ID) - Blank Extension.
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckout
+
+	Assign g_GuestName "VACANT"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSV1=$(s_BarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSS1=$(s_BarCOS),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+:RoomTransfer_SkipCheckout
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Echo Er: Skipping Checkin on Room Transfer Event $(_EV_ID) - Blank Extension.
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckin
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCOS)"
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_BarCOS)"
+
+	Assign g_GuestName "$(_EV_NAMEDISPLAY)"
+	if "$(g_GuestName)" EQ ""
+		Echo Er: _EV_NAMEDISPLAY is empty on Room Transfer event $(_EV_ID)
+	if "$(g_GuestName)" EQ ""
+		Goto IgnoreRecord
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-LEMAN:TYPE=STN,STNO=<_EV_TRDESTEXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSV1=$(WorkVal),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "AENDERN-LEMAN:TYP=TLN,TLNNU=<_EV_TRDESTEXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LCOSS1=$(WorkVal),NAME=\"<g_GuestName:TEXT:$(s_NameLength):LJ,SP,AN>\";"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "AENDERN DURCHGEFUEHRT;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+	ContainsStr "DIGITAL" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomTransfer_SkipCheckin
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-SBCSU:STNO=<_EV_TRDESTEXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,OPT=OPTI,TEXTSEL=ENGLISH;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	if "$(SendRec)" NE ""
+		Call SendRecord
+
+:RoomTransfer_SkipCheckin
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Goto DoNotDisturb_Set
+	if "$(_EV_DNDACTION)" EQ "DISTURBABLE"
+		Goto DoNotDisturb_Clear
+
+	Echo Er: Unknown DNDAction: "$(_EV_DNDACTION)"
+	Goto IgnoreRecord
+
+:DoNotDisturb_Set
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "EINRICHTEN-ACTDA:TYP=TLN,RNR=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LMACT=ANRS;"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "EINRICHTEN DURCHGEFUEHRT;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "ADD-ACTDA:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,FEATCD=DND;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "ADD COMPLETED;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+//	Logout timer
+	StartWaitTimer 120
+
+	Goto HandleOKAndExit
+
+:DoNotDisturb_Clear
+
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign SendRec "LOESCHEN-ACTDA:TYP=TLN,RNR=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,LMACT=ANRS;"
+	if "<s_Language:TEXT:20:UC>" EQ "GERMAN"
+		Assign v_ReplyString "LOESCHEN DURCHGEFUEHRT;"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "DEL-ACTDA:TYPE=STN,STNO=<_EV_EXTNNUMBER:TEXT:$(s_ExtnLength):LJ>,FEATCD=DND;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "DELETE COMPLETED;"
+
+	if "$(SendRec)" EQ ""
+		Echo Er: Invalid s_Language: "$(s_Language)" - Please check the setting in INIT
+	if "$(SendRec)" EQ ""
+		Exit
+
+	Call SendRecord
+
+//	Logout timer
+	StartWaitTimer 120
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+	
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Exit
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Call Logout
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComing
+;   This label is called when we have are waiting for a response to our
+;   sent record.
+:TakeWhatsComing
+
+	Assign f_Error "FALSE"
+	Assign f_Timeout "FALSE"
+	Assign f_GotReplyString "FALSE"
+
+:TakeWhatsComing_GetNextLine
+
+	Assign ReceivedRec ""
+
+	StartWaitTimer2 60
+
+:TakeWhatsComing_Read
+
+	ReadFromPort 1 1
+
+	if "$(f_Timeout)" EQ "TRUE"
+		Echo Er: Timeout waiting for CR or ETX.
+	if "$(f_Timeout)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto TakeWhatsComing_SkipAdd
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto TakeWhatsComing_SkipAdd
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto TakeWhatsComing_SkipAdd
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	Call TakeWhatsComing_TestTimer
+
+	Goto TakeWhatsComing_Read
+
+:TakeWhatsComing_SkipAdd
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto TakeWhatsComing_SkipCheckString
+
+	ContainsStr "$(v_ReplyString)" "$(ReceivedRec)" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+	ContainsStr "CHANGE NOT COMPLETED" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+	ContainsStr "AENDERN NICHT DURCHGEFUEHRT" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+	ContainsStr "DELETE NOT COMPLETED" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+	ContainsStr "ENTFERNEN NICHT DURCHGEFUEHRT" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+	if "$(_G_RESULT)" NE "TRUE"
+		Call TakeWhatsComing_TestError
+
+:TakeWhatsComing_SkipCheckString
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Call TakeWhatsComing_EchoLine
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto TakeWhatsComing_CheckResult
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Call TakeWhatsComing_EchoLine
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto TakeWhatsComing_GetNextLine
+
+	if "$(f_CmdSent)" EQ "TRUE"
+		Call TakeWhatsComing_TestError
+
+	Assign f_CmdSent "FALSE"
+
+	Goto TakeWhatsComing_Read
+
+:TakeWhatsComing_CheckResult
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Echo Db: Got ReplyString - Returning.
+	if "$(f_GotReplyString)" EQ "TRUE"
+		sleep 100
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Return
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Received Error
+	if "$(f_Error)" EQ "TRUE"
+		Return
+
+	Echo Db: Not got wait string, but got ETX. Going back to read until timeout.
+
+	Goto TakeWhatsComing_GetNextLine
+
+:TakeWhatsComing_EchoLine
+
+	if "$(ReceivedRec)" NE ""
+		Echo Rx: $(ReceivedRec)
+
+	Return
+
+:TakeWhatsComing_TestTimer
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Assign f_Timeout "TRUE"
+
+	Return
+
+:TakeWhatsComing_TestError
+
+	ContainsStr "M5: VERB NOT FOUND" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_Error "TRUE"
+
+	ContainsStr "M5: VERB FUER NOUN NICHT MOEGLICH" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_Error "TRUE"
+
+	ContainsStr "DISCONNECTED" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Exit
+
+	ContainsStr "#######################################" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Exit
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReadEverything
+;   This label is called when we need to read off the whole Input Buffer
+:ReadEverything
+
+	StartWaitTimer2 5
+
+:ReadEverything_Start
+
+	Assign ReceivedRec ""
+
+:ReadEverything_KeepReading
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		StartWaitTimer2 5
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReadEverything_CheckTimer
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReadEverything_SkipAdd
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto ReadEverything_SkipAdd
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReadEverything_SkipAdd
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:ReadEverything_SkipAdd
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReadEverything_GotLine
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReadEverything_GotLine
+
+	Goto ReadEverything_KeepReading
+
+:ReadEverything_GotLine
+
+	if "$(ReceivedRec)" NE ""
+		Echo Rx: $(ReceivedRec)
+
+	Goto ReadEverything_Start
+
+:ReadEverything_CheckTimer
+
+	if "$(ReceivedRec)" NE ""
+		Echo Rx: $(ReceivedRec)
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Return
+
+Goto ReadEverything_Start
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Send $(SendRec)<#3>
+	Echo Tx: $(SendRec)
+
+	Assign f_CmdSent "TRUE"
+
+	Call TakeWhatsComing
+
+	if "$(f_Error)" EQ "TRUE"
+		Assign f_RetryCount $(f_RetryCount) + 1
+	if "$(f_Error)" EQ "TRUE"
+		Goto SendRecord_Error
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Timeout waiting for completed string.  Retrying.
+	if "$(f_GotReplyString)" NE "TRUE"
+		Assign f_RetryCount $(f_RetryCount) + 1
+	if "$(f_GotReplyString)" NE "TRUE"
+		Goto SendRecord_Error
+
+	Assign SendRec ""
+
+	Return
+
+:SendRecord_Error
+
+	if "$(f_RetryCount)" GT "2"
+		Goto SendRecord_Abort
+
+	Assign SendRec ""
+
+	Goto Reconnect
+
+:SendRecord_Abort
+
+	Echo Er: Failed to send record 3 times.  Logging out and Ignoring Record.
+
+	Assign SendRec ""
+
+	Call Logout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;   This label is called when we need to Login to the PBX.
+:Login
+
+	Echo Db: Sleeping 5 seconds before attempting to Login to the PBX.
+	Sleep 5000
+
+	Echo Db: Reading everything in case there is an input buffer
+	Call ReadEverything
+
+	Echo Db: Input buffer is clear - Beginning Login Process
+
+:Login_Retry
+
+	Send <#13><#10>
+	Sleep 100
+	Send <#20>
+	Echo Tx: Ctrl-T
+
+	Sleep 200
+
+	Assign f_CmdSent "TRUE"
+	Assign v_ReplyString "LOGIN ="
+	Call TakeWhatsComing
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_SendUsername
+
+	Goto Reconnect
+
+:Login_SendUsername
+
+	Send $(s_Username)<#3>
+	Echo Tx: $(s_Username)
+
+	Sleep 200
+
+	Assign f_CmdSent "TRUE"
+	Assign v_ReplyString "PASSW = <#27>[8m"
+	Call TakeWhatsComing
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_SendPassword
+
+	Goto Reconnect
+
+:Login_SendPassword
+
+	Send $(s_Password)<#3>
+	Echo Tx: $(s_Password)
+
+	Sleep 200
+
+	Assign f_CmdSent "TRUE"
+	Assign v_ReplyString "L O G O N"
+	Call TakeWhatsComing
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_Complete
+
+	Goto Reconnect
+
+:Login_Complete
+
+	Echo Db: Logged in to the PBX.
+	Assign f_LoggedIn "TRUE"
+
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign SendRec "CHA-FUNCT:SLANG=ENG;"
+	if "<s_Language:TEXT:20:UC>" EQ "ENGLISH"
+		Assign v_ReplyString "CHANGE COMPLETED;"
+
+	Call SendRecord
+
+//	Logout timer
+	StartWaitTimer 120
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Logout
+;   This label is called when we need to Logout of the PBX.
+:Logout
+
+	Echo Db: Logging out of the PBX.
+
+	Echo Tx: Ctrl-X
+	Send <#24>
+
+	Call ReadEverything
+
+	Assign f_LoggedIn "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Reconnect
+;   This label is called when we need to re-initialise the connection to
+;   the PBX
+:Reconnect
+
+	Echo Db: Re-initialising connection to the PBX
+
+	ClosePort
+
+	Sleep 5000
+
+	OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+	Assign f_RetryCount 0
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+	Assign f_RetryCount 0
+
+Exit
+; ************************************************************************

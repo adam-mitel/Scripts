@@ -1,0 +1,633 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.2.0
+; ************************************************************************
+;  This is the HI configuration script for interfacing to an LDK 300
+;  exchange.
+;
+;  NOTES: This switch uses text strings for incoming maid status. These
+;         are converted to the following digits:
+;         Clean = 1
+;         Dirty = 2
+;         Inspt = 3 [Inspected]
+;         Oosvc = 4 [Out of Service]
+;
+;  Created:                                                    pjh-140102
+;  Updated:                                                    pjh-210102
+;
+;  Modifications - AU - 12/10/2015 - 50.0.2.0
+;	* Updated to support new features on the LG PBX:
+;	    - Room Status codes for Inspected and Out of Service
+;	    - Wakeup Answer Statuses for Answered and No Answer
+;	* Changed Room Status codes from 0-1 to 1-4 to comply with our default set
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 27/08/2010
+;	* Added an option for Wakeup Calls
+;	* Modified HandleRoomStatus label to stop processing any misinterpreted
+;	  events causing HI to hang.
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec			// Record to be sent to PBX.
+define AwaitingString		// String to wait for to acknowledge command.
+define ReceivedRec  		// Record received from the PBX.
+define RecType
+
+define WorkVal			// Used for string manipulation.
+define fError			// Used to indicate an error reply.
+define FLAG			// Used to flag a timeout.
+define GotWaitString		// Used to flag whether we received the string
+				// we were waiting for.
+define in_Extn			// Used for incoming records.
+define in_Status		// Used for incoming records.
+define in_Dummy			// Used for incoming records.
+define in_Date
+define in_Time
+// Options
+
+define BarCOS			// COS used to bar room.
+define UnbarCOS			// COS used to unbar room.
+define CmdTimeout		// Time to wait for ACK or NAK after command sent.
+
+define s_Wakeups
+define f_ReturnToTWC
+
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when the interface starts up.
+:INIT
+
+// OPT: Change these to set the COS value used to bar and unbar lines. 
+//		Valid values are 1-7.
+assign BarCOS "7"
+assign UnbarCOS "2"
+
+// OPT: Set this as the Timeout for replies to commands.
+assign CmdTimeout 5
+
+// OPT: Set this to YES or NO depending on whether we wish to send
+//      Wakeup commands
+Assign s_Wakeups "YES"
+
+; Ensure serial port is open.
+OpenPort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+if "$(s_Wakeups)" NE "YES"
+	Goto IgnoreRecord
+
+if "$(_EV_WKACTION)" NE "SET"
+  goto WKClear
+
+Assign SendRec "$07 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <_EV_WKTIME:TIME:4:HHMM>"
+Call SendRecord
+
+Goto WKDone
+
+:WKClear
+
+Assign SendRec "$34 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+Call SendRecord
+
+:WKDone
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+; Set up the Room Check-in command and send it.
+assign SendRec "$00 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+call SendRecord
+
+; Set up the Room Name command and send it.
+assign WorkVal "<_EV_NAMEDISPLAY:TEXT:12:AN>"
+ReplaceChars "$(WorkVal)" " " "*"
+assign WorkVal "$(_G_RESULT)"
+assign SendRec "$01 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <WorkVal:TEXT:12:>"
+call SendRecord
+
+; Set up COS command and send it.
+assign SendRec "$02 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <UnbarCOS:NUMBER:1:>"
+assign SendRec "$(SendRec)" + "<UnbarCOS:NUMBER:1:>"
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+; Set up the Room Check-out (No payment method) command and send it.
+assign SendRec "$10 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+; Work out what to send.
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "$02 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <UnbarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "$(SendRec)" + "<UnbarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "$02 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <BarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "$(SendRec)" + "<BarCOS:NUMBER:1:>"
+
+; Send it.	
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+; Set up the Room Name command and send it.
+assign WorkVal "<_EV_NAMEDISPLAY:TEXT:12:AN>"
+ReplaceChars "$(WorkVal)" " " "*"
+assign WorkVal "$(_G_RESULT)"
+assign SendRec "$01 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP> <WorkVal:TEXT:12:>"
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+; Check-in destination
+assign SendRec "$00 <_EV_TRDESTEXTNNUMBER:TEXT:4:RJ,ZP>"
+call SendRecord
+
+; Set name on destination
+assign WorkVal "<_EV_NAMEDISPLAY:TEXT:12:AN>"
+ReplaceChars "$(WorkVal)" " " "*"
+assign WorkVal "$(_G_RESULT)"
+assign SendRec "$01 <_EV_TRDESTEXTNNUMBER:TEXT:4:RJ,ZP> <WorkVal:TEXT:12:>"
+call SendRecord
+
+; Set COS on destination
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "$02 <_EV_TRDESTEXTNNUMBER:TEXT:4:RJ,ZP> <UnbarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "$(SendRec)" + "<UnbarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "$02 <_EV_TRDESTEXTNNUMBER:TEXT:4:RJ,ZP> <BarCOS:NUMBER:1:>"
+if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "$(SendRec)" + "<BarCOS:NUMBER:1:>"
+call SendRecord
+
+; Checkout source
+assign SendRec "$10 <_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is carried out from here when the program is idle and bytes
+;    have been received on the port.
+; ************************************************************************
+:CheckIncoming
+
+	Assign ReceivedRec ""
+	Assign RecType ""
+	Assign Flag "FALSE"
+
+	StartWaitTimer 5
+
+:CheckIncoming_Read
+
+	ReadFromPort 1 1
+
+//	Nothing received, wait longer
+	if "$(_PORTCHARS)" EQ ""
+		Call CheckIncoming_TestTimer
+
+	if "$(Flag)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto CheckIncoming_Read
+
+//	Add the received character to the record if it is not LF
+	if "$(_PORTCHARS)" NE "<#10>"
+		Assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+//	If it is a complete record terminated by CR, go on to process it.
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto CheckIncoming_FinRead
+
+//	Carry on reading the reply
+	Goto CheckIncoming_Read
+
+:CheckIncoming_FinRead
+
+	Echo Rx: $(ReceivedRec)
+
+//	Test if it is a Call Record
+	if "<ReceivedRec:TEXT:2:LJ,SP>" NE "<#47><#47>"
+		Goto CheckIncoming_GotCDR
+
+//	Test if this is a Room Status Record
+
+	ContainsStr "CLEAN" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto CheckIncoming_GotRS
+
+	ContainsStr "DIRTY" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto CheckIncoming_GotRS
+
+	ContainsStr "INSPT" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto CheckIncoming_GotRS
+
+	ContainsStr "OOSVC" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto CheckIncoming_GotRS
+
+//	Test if this is a Wakeup Record
+
+	ContainsStr "WAKEUP" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto CheckIncoming_GotWK
+
+Goto CheckIncoming_Finished
+	
+:CheckIncoming_GotRS
+
+	Assign RecType "RS"
+	Assignasis _G_IN_RECORDFORMAT "<#47><#47><in_Extn:TEXT:4:RJ,SP>  <in_Status:TEXT:5:LJ,SP><in_Dummy:TEXT:18:LJ,SP><#13>"
+
+	Goto CheckIncoming_ParseRecord
+
+:CheckIncoming_GotWK
+
+	Assign RecType "WK"
+	Assignasis _G_IN_RECORDFORMAT "<#47><#47>ROOM <in_Extn:TEXT:4:RJ,SP>  <in_Date:DATE:8:MM/DD/YY>  S)<in_Time:TIME:5:HH:MM><in_Dummy:TEXT:10:LJ,SP><in_Status:TEXT:21:LJ,SP><#13>"
+
+	Goto CheckIncoming_ParseRecord
+
+:CheckIncoming_ParseRecord
+
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Db: Parser Error
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto CheckIncoming_NotRS
+
+	if "$(RecType)" EQ "RS"
+		Call HandleRoomStatus
+	if "$(RecType)" EQ "WK"
+		Call HandleWakeup
+
+	if "$(f_ReturnToTWC)" EQ "TRUE"
+		Return
+
+	Goto CheckIncoming_Finished
+
+:CheckIncoming_TestTimer
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Assign FLAG "TRUE"
+
+Return
+
+:CheckIncoming_GotCDR
+
+	PassToDataCollection $(ReceivedRec)
+
+	if "$(f_ReturnToTWC)" EQ "TRUE"
+		Return
+
+:CheckIncoming_Finished
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRoomStatus
+;      Handles incoming room status requests
+:HandleRoomStatus
+
+	Assign WorkVal ""
+
+	if "<in_Status:TEXT:5:UC>" EQ "CLEAN"
+		Assign WorkVal "1"
+	if "<in_Status:TEXT:5:UC>" EQ "DIRTY"
+		Assign WorkVal "2"
+	if "<in_Status:TEXT:5:UC>" EQ "INSPT"
+		Assign WorkVal "3"
+	if "<in_Status:TEXT:5:UC>" EQ "OOSVC"
+		Assign WorkVal "4"
+
+	if "$(WorkVal)" EQ ""
+		Echo Er: Unknown Room Status "$(in_Status)"
+	if "$(WorkVal)" EQ ""
+		Return
+
+	CreateRoomStatus "$(in_Extn)" "$(WorkVal)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWakeup
+;      Handles incoming wakeup results
+:HandleWakeup
+
+	if "$(in_Status)" EQ "WAKEUP      ANSWERED!"
+		CreateWakeupDelivered "$(in_Extn)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "4"
+	if "$(in_Status)" EQ "WAKEUP NOT  ANSWERED!"
+		CreateWakeupFailed "$(in_Extn)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "5"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;    Execution is carried out from here periodically when the program is
+;    idle.
+; ************************************************************************
+:PeriodicCheck
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  SendRecord
+;    Sends a command to the PBX and awaits the reply.
+; ************************************************************************
+:SendRecord
+
+; Send the record followed by CRLF.
+Send $(SendRec)<#13><#10>
+Echo Tx: $(SendRec)
+
+; Then wait for the reply.
+Assign flag "FALSE"
+StartWaitTimer $(CmdTimeout)
+Call TakeWhatsComing
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  TakeWhatsComing
+;    Continues to receive and echo lines that end in CR until a specific
+;	  line is received.
+; ************************************************************************
+:TakeWhatsComing
+
+; Start a fresh record
+assign ReceivedRec ""
+assign RecType ""
+assign GotWaitString "FALSE"
+
+; Read the next character
+:TakeWhatsComing_Read
+ReadFromPort 1 1
+
+; Nothing received, wait longer
+if "$(_PORTCHARS)" EQ ""
+	call TakeWhatsComing_TestTimer
+if "$(Flag)" EQ "TRUE"
+	Return
+if "$(_PORTCHARS)" EQ ""
+	goto TakeWhatsComing_Read
+
+; Add the received character to the record if it is not LF
+if "$(_PORTCHARS)" NE "<#10>"
+	assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+; if this record is what we are expecting, Echo it and return
+;if "$(ReceivedRec)" EQ "$(AwaitingString)"
+;        Echo Rx: $(ReceivedRec)
+;if "$(ReceivedRec)" EQ "$(AwaitingString)"
+;        assign GotWaitString "TRUE"
+;if "$(ReceivedRec)" EQ "$(AwaitingString)"
+;        Return
+
+; if it is a complete record terminated by CR, Echo it and start again.
+if "$(_PORTCHARS)" EQ "<#13>"
+	Goto GotCR
+
+
+;call TakeWhatsComing_TestError
+
+; Carry on reading the reply
+goto TakeWhatsComing_Read
+
+:GotCR
+
+	Echo Rx: $(ReceivedRec)
+
+//	Test if it is a Call Record
+	if "<ReceivedRec:TEXT:2:LJ,SP>" NE "<#47><#47>"
+		Goto CheckIncoming_GotCDR
+
+//	Test if it is a Room Status Record
+	ContainsStr "CLEAN" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_ReturnToTWC "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call CheckIncoming_GotRS
+
+	ContainsStr "DIRTY" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_ReturnToTWC "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call CheckIncoming_GotRS
+
+	ContainsStr "INSPT" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_ReturnToTWC "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call CheckIncoming_GotRS
+
+	ContainsStr "OOSVC" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_ReturnToTWC "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call CheckIncoming_GotRS
+
+//	Test if this is a Wakeup Record
+
+	ContainsStr "WAKEUP" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_ReturnToTWC "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call CheckIncoming_GotWK
+
+	Assign f_ReturnToTWC "FALSE"
+
+	Goto TakeWhatsComing
+
+:TakeWhatsComing_TestTimer
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	assign FLAG "TRUE"
+return
+
+; Check if we got an error back. If so flag it and return.
+:TakeWhatsComing_TestError
+ContainsStr "$NAK" "$(ReceivedRec)" "FALSE"
+
+if "$(_G_RESULT)" EQ "FALSE"
+	assign fError "TRUE"
+
+return
+; ************************************************************************
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+Exit
+; ************************************************************************

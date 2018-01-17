@@ -1,0 +1,832 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for barring, unbarring and setting
+;  names on an iSDX exchange.
+;
+;  Note: Currently does not support DUMPing.
+;
+;  Written:                                                    pjh-010801
+;  UpdateD:                                                    pjh-030901
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define ReceivedRec
+
+; Options
+define OSL					// OSL to use for normal commands.
+define DumpOSL					// OSL to use for dump command.
+define BarTAC					// TAC to send to bar extn.
+define UnbarTAC					// TAC to send to unbar extn.
+define BlankNameFmt				// Format for blank name
+define ExtnLength				// Length of Extn Number.
+define NameLength				// Length of Guest Name.
+define PauseBeforeLogin				// Milliseconds to pause before a login.
+define LogoutTimeout				// Seconds before we auto-logout
+define DumpTimeout				// Seconds to wait after sending DUMP before timing out
+define CmdTimeout				// Seconds to wait after sending a command before timing out
+define MaxRetry					// Number of times to retry a command before moving on
+
+; Flags used through the script
+define SendRec					// Where we build our records to send
+define LoggedIn					// Logged into the switch?
+define DumpLoggedIn				// Are we logged in at a DUMP level?
+define Idle					// Are we Idle waiting for a timeout to happen?
+define AwaitingString				// A string that we are waiting to receive.
+define Flag					// General Use Flag value
+define fCmdSent					// Have we sent a command?
+define fError					// Did we encounter an error while processing a command?
+define fNeedDump				// Do we need to dump?
+define fDumping					// Are we dumping?
+define fDumpError				// Did we encounter an error while dumping?
+define fDumpSent				// Have we sent a DUMP command?
+define GotWaitString				// Have we got the string we're waiting for?
+
+; Variables
+define Retries					// Number of retries on a command.
+
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when the interface starts up.
+:INIT
+
+; OPT: Set this to be the OSL for execution of customer level commands.
+assign OSL "14 00 1424392001"
+
+; OPT: Set this to be the OSL for execution of maintenance level commands.
+assign DumpOSL "00 05 0602259980"
+
+; OPT: The next 2 lines set the TACs for Barring and Unbarring extns.
+assign BarTAC 0
+assign UnbarTAC 1
+
+; OPT: The next line specifies the name assigned to an extn in a vacant room.
+assignasis BlankNameFmt "VAC_<_EV_ROOMNUMBER:TEXT:$(ExtnLength):LJ>"
+
+; OPT: The next line specifies the length of the extension numbers on the PBX.
+assign ExtnLength 5
+
+; OPT: The next line specifies the length of names to send to the PBX.
+assign NameLength 25
+
+; OPT: This line sets the pause in milliseconds between login attempts.
+assign PauseBeforeLogin 5000
+
+; OPT: This line sets the number of times to retry a command before moving on.
+assign MaxRetry 5
+
+; OPT: The next 3 lines specify the timeouts in seconds for specific commands.
+assign LogoutTimeout 120
+assign DumpTimeout 900
+assign CmdTimeout 60
+
+assign ReceivedRec ""
+assign AwaitingString ""
+assign LoggedIn "FALSE"
+assign Idle "FALSE"
+assign fCmdSent "FALSE"
+assign fNeedDump "FALSE"
+assign fDumping "FALSE"
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+; Reset Retries
+assign Retries 0
+
+:Checkin_RetryUnbar
+
+; Build unbar line command
+assign SendRec "STAC,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(UnbarTAC)"
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto Checkin_SkipRetryUnbar
+	
+assign Retries $(Retries) + 1
+
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto Checkin_SkipRetryUnbar
+	
+if "$(fError)" EQ "TRUE"
+	goto Checkin_RetryUnbar
+
+:Checkin_SkipRetryUnbar
+
+; Reset Retries
+assign Retries 0
+
+:Checkin_RetryName
+
+; Build set name command
+assign SendRec "RTS EX <_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ> <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ>"
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto Checkin_SkipRetryName
+	
+assign Retries $(Retries) + 1
+
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto Checkin_SkipRetryName
+if "$(fError)" EQ "TRUE"
+	goto Checkin_RetryName
+
+:Checkin_SkipRetryName
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+; Reset Retries
+assign Retries 0
+
+:Checkout_RetrySetName
+
+; Clear the Name on the extn
+; Build our record
+assign SendRec "RTS EX <_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ> $(BlankNameFmt)"
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto Checkout_SkipRetrySetName
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto Checkout_SkipRetrySetName
+if "$(fError)" EQ "TRUE"
+	goto Checkout_RetrySetName
+
+:Checkout_SkipRetrySetName
+
+; Reset Retries
+assign Retries 0
+
+:Checkout_RetryBar
+
+; Build Bar line record
+assign SendRec "STAC,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(BarTAC)"
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto Checkout_SkipRetryBar
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto Checkout_SkipRetryBar
+if "$(fError)" EQ "TRUE"
+	goto Checkout_RetryBar
+
+:Checkout_SkipRetryBar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+; Reset Retries
+assign Retries 0
+
+:ClassOfService_Retry
+
+; Work out what to send.
+if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "STAC,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(UnbarTAC)
+if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "STAC,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(BarTAC)
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto ClassOfService_SkipRetry
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto ClassOfService_SkipRetry
+if "$(fError)" EQ "TRUE"
+	goto ClassOfService_Retry
+
+:ClassOfService_SkipRetry
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+; Reset Retries
+assign Retries 0
+
+:RoomUpdate_Retry
+
+; Set the Name on the extn
+; Build our record
+assign SendRec "RTS EX <_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ> <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ>"
+
+; Send the record
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto RoomUpdate_SkipRetry
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto RoomUpdate_SkipRetry
+if "$(fError)" EQ "TRUE"
+	goto RoomUpdate_Retry
+
+:RoomUpdate_SkipRetry
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+; Reset Retries
+assign Retries 0
+
+:RoomTransfer_RetrySrcName
+
+; Clear the Name on the source extn
+; Build our record
+assign SendRec "RTS EX <_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ> $(BlankNameFmt)"
+
+; Send the command
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto RoomTransfer_SkipRetrySrcName
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto RoomTransfer_SkipRetrySrcName
+if "$(fError)" EQ "TRUE"
+	goto RoomTransfer_RetrySrcName
+
+:RoomTransfer_SkipRetrySrcName
+
+; Reset Retries
+assign Retries 0
+
+:RoomTransfer_RetrySrcBar
+
+; Bar the source extn
+; Build record
+assign SendRec "STAC,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(BarTAC)"
+
+; Send the command
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto RoomTransfer_SkipRetrySrcBar
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto RoomTransfer_SkipRetrySrcBar
+if "$(fError)" EQ "TRUE"
+	goto RoomTransfer_RetrySrcBar
+
+:RoomTransfer_SkipRetrySrcBar
+
+; Reset Retries
+assign Retries 0
+
+:RoomTransfer_RetryDestUnbar
+
+; Bar/Unbar the destination
+; Build record
+if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+	assign SendRec "STAC,<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(UnbarTAC)"
+if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+	assign SendRec "STAC,<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):LJ>,$(BarTAC)"
+
+; Send the command
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto RoomTransfer_SkipRetryDestUnbar
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto RoomTransfer_SkipRetryDestUnbar
+if "$(fError)" EQ "TRUE"
+	goto RoomTransfer_RetryDestUnbar
+
+:RoomTransfer_SkipRetryDestUnbar
+
+; Reset Retries
+assign Retries 0
+
+:RoomTransfer_RetryDestName
+
+; Set the Name on the extn
+; Build our record
+assign SendRec "RTS EX <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):LJ> <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ>"
+
+; Send the command
+call SendCommand
+
+; Check for error and retry if necessary
+if "$(fError)" EQ "FALSE"
+	goto RoomTransfer_SkipRetryDestName
+	
+assign Retries $(Retries) + 1
+if "$(Retries)" GT "$(MaxRetry)
+	echo Er: Max retries exceeded..
+if "$(Retries)" GT "$(MaxRetry)
+	goto RoomTransfer_SkipRetryDestName
+if "$(fError)" EQ "TRUE"
+	goto RoomTransfer_RetryDestName
+
+:RoomTransfer_SkipRetryDestName
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is carried out from here when the program is idle and bytes
+;    have been received on the port.
+; ************************************************************************
+:CheckIncoming
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  PeriodicCheck
+;    Execution is carried out from here periodically when the program is
+;    idle.
+; ************************************************************************
+:PeriodicCheck
+
+; If we're not logged in don't do anything.
+if "$(LoggedIn)" NE "TRUE"
+	Exit
+
+; We're logged in, check for idle timeout and call logout if need be
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	call LogoutOfISDX
+	
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendCommand
+;    Sends a command, checking for being logged-in.
+; ************************************************************************
+:SendCommand
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call LoginToISDX
+
+; Send the record
+echo Tx: $(SendRec)<#13>
+send $(SendRec)<#13>
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign fError "FALSE"
+assign Flag "FALSE"
+assign AwaitingString "?"
+call TakeWhatsComing
+
+if "$(Flag)" EQ "TRUE"
+	assign LoggedIn "FALSE"
+if "$(Flag)" EQ "TRUE"
+	echo Er: No response received. Closing port and re-connecting.
+if "$(Flag)" EQ "TRUE"
+	ClosePort
+if "$(Flag)" EQ "TRUE"
+	Exit
+
+; Start a timer for logout
+StartWaitTimer $(LogoutTimeout)
+
+return
+; ************************************************************************
+
+
+; ************************************************************************
+;  LoginToISDX
+;    Carries out the task of logging into the ISDX.
+; ************************************************************************
+:LoginToISDX
+
+; Sleep for the required amount of time before attempting to login
+Sleep $(PauseBeforeLogin)
+
+; If we're not dumping then open the serial port and raise DTR
+if "$(fDumping)" NE "TRUE"
+	OpenPort
+
+:RetryLogin
+
+; Wait for the ? prompt
+assign AwaitingString "?"
+call TakeWhatsComing
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo Er: Login Failed, retrying in $(PauseBeforeLogin) milliseconds...
+if "$(GotWaitString)" NE "TRUE"
+	ClosePort
+if "$(GotWaitString)" NE "TRUE"
+	Sleep $(PauseBeforeLogin)
+if "$(GotWaitString)" NE "TRUE"
+	OpenPort
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryLogin
+
+; If we're going to do a dump then send OSL command with the Dump OSL
+if "$(fNeedDump)" EQ "TRUE"
+	echo Tx: OSL $(DumpOSL)<#13>
+if "$(fNeedDump)" EQ "TRUE"
+	send OSL $(DumpOSL)<#13>
+
+; If we're not doing a dump then send normal OSL
+if "$(fNeedDump)" EQ "FALSE"
+	echo Tx: OSL $(OSL)<#13>
+if "$(fNeedDump)" EQ "FALSE"
+	send OSL $(OSL)<#13>
+
+; Wait for the ? prompt
+assign AwaitingString "?"
+assign fError "FALSE"
+call TakeWhatsComing
+
+if "$(fError)" EQ "TRUE"
+	Echo Er: Error logging in, retrying in $(PauseBeforeLogin) milliseconds...
+if "$(fError)" EQ "TRUE"
+	ClosePort
+if "$(fError)" EQ "TRUE"
+	Sleep $(PauseBeforeLogin)
+if "$(fError)" EQ "TRUE"
+	OpenPort
+if "$(fError)" EQ "TRUE"
+	goto RetryLogin
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo Er: Login Failed, retrying in $(PauseBeforeLogin) milliseconds...
+if "$(GotWaitString)" NE "TRUE"
+	ClosePort
+if "$(GotWaitString)" NE "TRUE"
+	Sleep $(PauseBeforeLogin)
+if "$(GotWaitString)" NE "TRUE"
+	OpenPort
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryLogin
+	
+assign LoggedIn "TRUE"
+
+return
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComing
+;    Continues to receive and echo lines that end in CR until a specific
+;	  line is received.
+; ************************************************************************
+:TakeWhatsComing
+
+; Start a fresh record
+assign ReceivedRec ""
+assign GotWaitString "FALSE"
+
+; Set up Timeout
+if "$(fDumping)" EQ "TRUE"
+	StartWaitTimer $(DumpTimeout)
+if "$(fDumping)" NE "TRUE"
+	StartWaitTimer $(CmdTimeout)
+
+assign Flag "FALSE"
+
+; Read the next character
+:TakeWhatsComing_Read
+ReadFromPort 1 1
+
+; Nothing received, wait longer
+if "$(_PORTCHARS)" EQ ""
+	call TakeWhatsComing_TestTimer
+if "$(Flag)" EQ "TRUE"
+	Return
+if "$(_PORTCHARS)" EQ ""
+	goto TakeWhatsComing_Read
+
+; Add the received character to the record if it is not LF
+if "$(_PORTCHARS)" NE "<#10>"
+	assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+; if this record is what we are expecting, Echo it and return
+if "$(ReceivedRec)" EQ "$(AwaitingString)"
+	Echo Rx: $(ReceivedRec)
+if "$(ReceivedRec)" EQ "$(AwaitingString)"
+	assign GotWaitString "TRUE"
+if "$(ReceivedRec)" EQ "$(AwaitingString)"
+	Return
+
+; Carry on reading the current record
+if "$(_PORTCHARS)" NE "<#13>"
+	goto TakeWhatsComing_Read
+
+; if it is a complete record terminated by CR, Echo it and start again.
+Echo Rx: $(ReceivedRec)
+
+; Check for Error reply
+call TakeWhatsComing_TestError
+
+; Start next record
+goto TakeWhatsComing
+
+
+:TakeWhatsComing_TestTimer
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	assign FLAG "TRUE"
+return
+
+; Check if we got an error back. If so flag it and return.
+:TakeWhatsComing_TestError
+
+ContainsStr "ERROR" "$(ReceivedRec)" "FALSE"
+if "$(_G_RESULT)" EQ "TRUE"
+	assign fError "TRUE"
+
+; TODO: Add support to deal with DUMP REQUIRED and DUMP SOON responses.
+
+return
+
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDump
+;    Handles the process of dumping.
+; ************************************************************************
+:HandleDump
+
+; Flag that we are dumping
+assign fDumping "TRUE"
+
+; First logout of customer level.
+call LogoutOfISDX
+
+; Now login at dump level.
+call LoginToISDX
+
+:HandleDump_retry
+; Do the DUMP
+Send DUMP<#13>
+Echo Tx: DUMP<#13>
+
+; Await the result
+assign fDumpSent "TRUE"
+assign AwaitingString "DUMP COMPLETE"
+call TakeWhatsComing
+
+; Check result
+if "$(GotWaitString)" EQ "FALSE"
+	assign fDumpFailed "TRUE"
+if "$(GotWaitString)" EQ "TRUE"
+	assign fDumpFailed "FALSE"
+
+; Wait for reply
+assign AwaitingString "?"
+call TakeWhatsComing
+
+if "$(fDumpFailed)" EQ "TRUE"
+	goto HandleDump_retry
+
+; If successful clear the need dump flag.
+assign fNeedDump "FALSE"
+
+; First logout of dump level.
+call LogoutOfISDX
+
+; Now login at normal level.
+call LoginToISDX
+
+; No longer dumping
+assign fDumping "FALSE"
+
+return
+; ************************************************************************
+
+
+; ************************************************************************
+;  LogoutOfISDX
+;    Carries out the task of logging out of the ISDX.
+; ************************************************************************
+:LogoutOfISDX
+
+; Send BYE command
+Send BYE<#13>
+Echo Tx: BYE<#13>
+
+; Wait for confirmation
+assign fCmdSent "TRUE"
+assign AwaitingString "PLEASE RE-ENTER OSL"
+call TakeWhatsComing
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo Er: BYE failed, dropping DTR
+
+; Reset logged in flag.
+assign LoggedIn "FALSE"
+
+; If we're not dumping then close the port and drop DTR.
+if "$(fDumping)" NE "TRUE"
+	ClosePort
+
+return
+; ************************************************************************
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+Exit
+; ************************************************************************

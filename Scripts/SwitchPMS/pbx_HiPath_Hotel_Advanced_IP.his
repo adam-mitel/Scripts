@@ -1,0 +1,1008 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.2
+; ************************************************************************
+;
+;  This is the Hospitality Interface Script for interfacing to the
+;  HiPath Hotel Advanced V4.2 via TCP/IP.  This interface is used by
+;  Caracas.
+;
+;  Notes: This can only be used over TCP/IP and will not work when using
+;         any other connection method.
+;
+;	  When using Data Collection Passthrough, Monarch should be used
+;	  with Field Defs Enhanced_MPC.
+;
+;							     AU 25/02/2011
+;
+;  Modifications - AU - 11/12/2013
+;	* Updated to support older versions of the protocol with a new option
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;	
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+define WorkTmp
+;
+define f_FormatAssigned
+;
+define s_AdvancedRecords
+;
+define g_SwapFlag
+define g_LangCode
+define g_Status
+;
+define in_Article
+define in_ArticleCharge
+define in_ArticleDescription
+define in_ArticleQuantity
+define in_CRCat
+define in_CRCharge
+define in_CRCode
+define in_CRCost
+define in_CRDate
+define in_CRDestination
+define in_CRDigits
+define in_CRDuration
+define in_CREnd
+define in_CRExtension
+define in_CRGroup
+define in_CRPulses
+define in_CRSatellite
+define in_CRService
+define in_CRSetupCode
+define in_CRStart
+define in_CRSystemID
+define in_CRTrunk
+define in_CRType
+define in_Date
+define in_Dummy
+define in_Extension
+define in_PersonalNumber
+define in_Status
+define in_Time
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Set whether we should send Advanced or Basic Records
+	Assign s_AdvancedRecords "TRUE"
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+	Goto IgnoreRecord
+
+	Assign g_Status "0"
+	if "$(_EV_MWSTATE)" EQ "TRUE"
+		Assign g_Status "1"
+
+	Echo MW: Setting indicator to $(_EV_MWSTATE) on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>021<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<g_Status:TEXT:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	Goto IgnoreRecord
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		Assign g_Status "1"
+	if "$(_EV_WKACTION)" EQ "SET"
+		Echo WK: Setting Wakeup for <_EV_WKTIME:TIME:5:HH:MM> on $(_EV_EXTNNUMBER).
+
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Assign g_Status "0"
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Echo WK: Clearing Wakeup for <_EV_WKTIME:TIME:5:HH:MM> on $(_EV_EXTNNUMBER).
+
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Assign g_Status "2"
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Echo WK: Clearing All Wakeups on $(_EV_EXTNNUMBER).
+
+	if "$(g_Status)" EQ ""
+		Echo If: Unsupported _EV_WKACTION "$(_EV_WKACTION)" for Event $(_EV_ID).
+	if "$(g_Status)" EQ ""
+		Goto IgnoreRecord
+
+
+	Assign SendRec "<#2>031<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<_EV_WKDATE:DATE:6:DDMMYY><_EV_WKTIME:TIME:4:HHMM><g_Status:TEXT:1:RJ,ZP,AN>0<#3>
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	Assign g_LangCode "01"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_LangCode "$(_EV_LANGCODE)"
+
+	Assign g_SwapFlag "0"
+	if "$(_EV_CISWAPFLAG)" EQ "TRUE"
+		Assign g_SwapFlag "1"
+
+	Echo CI: Checking in $(_EV_EXTNNUMBER).
+
+	if "$(s_AdvancedRecords)" EQ "TRUE"
+		Assign SendRec "<#2>091<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000001<g_LangCode:NUMBER:2:RJ,ZP,AN><_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><g_SwapFlag:TEXT:1:RJ,ZP,AN><_EV_RESERVATION:TEXT:10:LJ,SP,AN>                <_EV_CIVIP:TEXT:3:LJ,SP,AN>                                        0000000000<#3>"
+	if "$(s_AdvancedRecords)" NE "TRUE"
+		Assign SendRec "<#2>011<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000001<g_LangCode:NUMBER:2:RJ,ZP,AN><_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><#3>"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	Assign g_SwapFlag "0"
+	if "$(_EV_COSWAPFLAG)" EQ "TRUE"
+		Assign g_SwapFlag "1"
+
+	Echo CO: Checkout out $(_EV_EXTNNUMBER).
+
+	if "$(s_AdvancedRecords)" EQ "TRUE"
+		Assign SendRec "<#2>091<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>000000000000601<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><g_SwapFlag:TEXT:1:RJ,ZP,AN><_EV_RESERVATION:TEXT:10:LJ,SP,AN>                                                           0000000000<#3>"
+	if "$(s_AdvancedRecords)" NE "TRUE"
+		Assign SendRec "<#2>011<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>000000000000201<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><#3>"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign g_Status "2"
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign g_Status "5"
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign g_Status "5"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign g_Status "4"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign g_Status "3"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign g_Status "2"
+
+	Echo COS: Setting Class of Service to $(g_Status) on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>211<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<g_Status:TEXT:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	Echo RU: Updating name on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>231<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><#3>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	Assign g_LangCode "01"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_LangCode "$(_EV_LANGCODE)"
+
+	if "$(s_AdvancedRecords)" NE "TRUE"
+		Goto RoomTransfer_BasicRecords
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Echo TR: No Source Extension on Event $(_EV_ID).
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_NoSource
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Echo TR: No Destination Extension on Event $(_EV_ID).
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_NoDestination
+
+	Echo TR: Transferring $(_EV_EXTNNUMBER) to $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "<#2>091<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000003<g_LangCode:NUMBER:2:RJ,ZP,AN><_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN>0<_EV_RESERVATION:TEXT:10:LJ,SP,AN>          <_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP,AN><_EV_TRVIP:TEXT:3:LJ,SP,AN>                                        0000000000<#3>"
+	Call SendRecord
+
+	Echo TR: Checkout out $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>091<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>000000000000501<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN>0<_EV_RESERVATION:TEXT:10:LJ,SP,AN>                                                           0000000000<#3>"
+	Call SendRecord
+
+	Goto RoomTransfer_Done
+
+:RoomTransfer_NoSource
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Echo TR: No Destination Extension on Event $(_EV_ID).
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_Done
+
+	Echo TR: Checking in Destination $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "<#2>091<_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000001<g_LangCode:NUMBER:2:RJ,ZP,AN><_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN>0<_EV_RESERVATION:TEXT:10:LJ,SP,AN>                <_EV_TRVIP:TEXT:3:LJ,SP,AN>                                        0000000000<#3>"
+	Call SendRecord
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign g_Status "2"
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign g_Status "5"
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign g_Status "5"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign g_Status "4"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign g_Status "3"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign g_Status "2"
+
+	Echo TR: Setting Class of Service to $(g_Status) on $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "<#2>211<_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<g_Status:TEXT:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+	Goto RoomTranser_Done
+
+:RoomTransfer_BasicRecords
+
+	Echo TR: Transferring $(_EV_EXTNNUMBER) to $(_EV_TRDESTEXTNNUMBER).
+
+	Echo TR: Checking out $(_EV_EXTNNUMBER).
+	Assign SendRec "<#2>011<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>000000000000201<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><#3>"
+	Call SendRecord
+
+	Echo TR: Checking in Destination $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "<#2>011<_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP,AN>000000000000201<_EV_NAMEDISPLAY:TEXT:40:LJ,SP,AN><#3>"
+	Call SendRecord
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign g_Status "2"
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign g_Status "5"
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign g_Status "5"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign g_Status "4"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign g_Status "3"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign g_Status "2"
+
+	Echo TR: Setting Class of Service to $(g_Status) on $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "<#2>211<_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<g_Status:TEXT:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+:RoomTransfer_Done
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+	Goto IgnoreRecord
+
+	if "$(_EV_EGACTION)" EQ "ADD"
+		Goto EG_Add
+	if "$(_EV_EGACTION)" EQ "UPDATE"
+		Goto IgnoreRecord
+	if "$(_EV_EGACTION)" EQ "DELETE"
+		Goto IgnoreRecord
+
+	Echo If: Unsupported _EV_EGACTION "$(_EV_EGACTION)" for Event $(_EV_ID).
+	Goto IgnoreRecord
+
+:EG_Add
+
+	Assign g_LangCode "01"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_LangCode "$(_EV_LANGCODE)"
+
+	Echo EG: Adding an Extra Guest to Extension $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>091<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000002<g_LangCode:NUMBER:2:RJ,ZP,AN><_EV_EGGUESTNAME:TEXT:40:LJ,SP,AN>0<_EV_EGNUMBER:TEXT:10:LJ,SP,AN>                <_EV_EGVIP:TEXT:3:LJ,SP,AN>                                        0000000000<#3>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	Goto IgnoreRecord
+
+	Assign g_Status "0"
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign g_Status "1"
+
+	if "$(g_Status)" EQ "0"
+		Echo DND: Removing DND on $(_EV_EXTNNUMBER).
+	if "$(g_Status)" EQ "1"
+		Echo DND: Setting DND on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>071<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<g_Status:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+	Goto IgnoreRecord
+
+	if "$(_EV_DDIACTION)" EQ "CLEAR"
+		Assign g_Status "0"
+	if "$(_EV_DDIACTION)" EQ "SET"
+		Assign g_Status "1"
+
+	if "$(g_Status)" EQ "0"
+		Echo DDI: Clearing DDI $(_EV_DDI) on $(_EV_EXTNNUMBER).
+	if "$(g_Status)" EQ "1"
+		Echo DDI: Setting DDI $(_EV_DDI) on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "<#2>061<_EV_EXTNNUMBER:TEXT:6:LJ,SP,AN>0000000000<_EV_DDI:TEXT:6:LJ,SP,AN>0<g_Status:TEXT:1:RJ,ZP,AN><#3>"
+	Call SendRecord
+
+Goto HandleOKAndEXit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+	Call ResetDataVariables
+
+	StartWaitTimer 5
+
+:ReceiveRecord_GetRecType
+
+	Sleep 50
+
+	ReadFromPort 2 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto ReceiveRecord_IncompleteRecord
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReceiveRecord_GetRecType
+
+	Assign RecType "$(_PORTCHARS)"
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:ReceiveRecord_ReadUntilETX
+
+	Sleep 50
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto ReceiveRecord_IncompleteRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReceiveRecord_GotETX
+
+	Goto ReceiveRecord_ReadUntilETX
+
+:ReceiveRecord_GotETX
+
+	Echo Rx: $(ReceivedRec)
+	Send <#6>
+	Echo Tx: <#6>
+
+	if "$(RecType)" EQ "26"
+		Goto ReceiveRecord_SkipParse
+
+	if "$(RecType)" EQ "11"
+		Call CallRecordFormat
+	if "$(RecType)" EQ "12"
+		Call VoiceMessageFormat
+	if "$(RecType)" EQ "13"
+		Call RoomStatusFormat
+	if "$(RecType)" EQ "14"
+		Call WakeupFormat
+	if "$(RecType)" EQ "15"
+		Call MinibarFormat
+	if "$(RecType)" EQ "17"
+		Call WakeupFormat
+	if "$(RecType)" EQ "18"
+		Call MinibarFormat
+	if "$(RecType)" EQ "19"
+		Call RoomStatusFormat
+	if "$(RecType)" EQ "25"
+		Call DatabaseSwapFormat
+	if "$(RecType)" EQ "29"
+		Call VoiceMessageFormat
+	if "$(RecType)" EQ "32"
+		Call MinibarFormat
+
+	if "$(f_FormatAssigned)" NE "TRUE"
+		Echo If: Unsupported RecType "$(RecType)" in Received Record.
+	if "$(f_FormatAssigned)" NE "TRUE"
+		Goto ReceiveRecord_SkipParse
+
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	ParseInRecord
+
+	if "$(RecType)" EQ "11"
+		Call HandleCallRecord
+	if "$(RecType)" EQ "12"
+		Call HandleVoiceMessage12
+	if "$(RecType)" EQ "13"
+		Call HandleRoomStatus
+	if "$(RecType)" EQ "14"
+		Call HandleWakeup14
+	if "$(RecType)" EQ "15"
+		Call HandleMinibar
+	if "$(RecType)" EQ "17"
+		Call HandleWakeup17
+	if "$(RecType)" EQ "18"
+		Call HandleMinibar
+	if "$(RecType)" EQ "19"
+		Call HandleRoomStatus
+	if "$(RecType)" EQ "25"
+		Call HandleDatabaseSwap
+	if "$(RecType)" EQ "29"
+		Call HandleVoiceMessage29
+	if "$(RecType)" EQ "32"
+		Call HandleMinibar
+
+:ReceiveRecord_SkipParse
+
+Exit
+	
+:ReceiveRecord_IncompleteRecord
+
+	Echo Rx: $(ReceivedRec)
+	Echo Er: Received incomplete record.
+	Send <#21>
+	Echo Tx: <#21>
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RecordFormats
+;    These labels are called when we need to assign the record format for
+;    incoming records
+:CallRecordFormat
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>111<in_Extension:TEXT:6:LJ,SP>0000000000<in_CRSystemID:TEXT:2:LJ,SP>10<in_CRDate:DATE:6:YYMMDD><in_CRStart:TIME:6:HHMMSS><in_CREnd:TIME:6:HHMMSS><in_CRSatellite:TEXT:1:LJ,SP><in_CRService:TEXT:1:LJ,SP><in_CRGroup:TEXT:2:LJ,SP><in_CRExtension:TEXT:6:LJ,SP><in_CRTrunk:TEXT:4:LJ,SP><in_CRPulses:TEXT:5:RJ,ZP><in_CRDigits:TEXT:16:LJ,SP><in_CRDestination:TEXT:1:LJ,SP><in_CRType:TEXT:1:LJ,SP><in_CRCode:TEXT:12:LJ,SP><in_CRSetupCode:TEXT:1:LJ,SP><in_CRCharge:TEXT:10:RJ,ZP><in_CRCost:TEXT:10:RJ,ZP><in_CRCat:TEXT:1:LJ,SP><#3>"
+	Assign f_FormatAssigned "TRUE"
+
+Return
+
+:VoiceMessageFormat
+
+	if "$(RecType)" EQ "12"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>121<in_Extension:TEXT:6:LJ,SP>0000000000<in_Status:TEXT:1:LJ,SP><#3>"
+	if "$(RecType)" EQ "12"
+		Assign f_FormatAssigned "TRUE"
+
+	if "$(RecType)" EQ "29"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>291<in_Extension:TEXT:6:LJ,SP>0000000000<in_Status:TEXT:2:RJ,SP><in_Dummy:TEXT:2:RJ,ZP><#3>"
+	if "$(RecType)" EQ "29"
+		Assign f_FormatAssigned "TRUE"
+
+Return
+
+:RoomStatusFormat
+
+	if "$(RecType)" EQ "13"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>131<in_Extension:TEXT:6:LJ,SP>0000000000<in_Status:TEXT:2:RJ,ZP><#3>"
+	if "$(RecType)" EQ "13"
+		Assign f_FormatAssigned "TRUE"
+
+	if "$(RecType)" EQ "19"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>191<in_Extension:TEXT:6:LJ,SP>0000000000<in_Status:TEXT:2:RJ,ZP><in_PersonalNumber:TEXT:10:LJ,SP><#3>"
+	if "$(RecType)" EQ "19"
+		Assign f_FormatAssigned "TRUE"
+
+Return
+
+:WakeupFormat
+
+	if "$(RecType)" EQ "14"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>141<in_Extension:TEXT:6:LJ,SP>0000000000<in_Time:TIME:4:HHMM><in_Status:TEXT:1:RJ,ZP><in_Dummy:TEXT:1:LJ,SP><#3>"
+	if "$(RecType)" EQ "14"
+		Assign f_FormatAssigned "TRUE"
+
+	if "$(RecType)" EQ "17"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>171<in_Extension:TEXT:6:LJ,SP>0000000000<in_Date:DATE:6:DDMMYY><in_Time:TIME:4:HHMM><in_Status:TEXT:1:RJ,ZP><#3>"
+	if "$(RecType)" EQ "17"
+		Assign f_FormatAssigned "TRUE"
+
+Return
+
+:MinibarFormat
+
+	if "$(RecType)" EQ "15"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>151<in_Extension:TEXT:6:LJ,SP>0000000000<in_Article:TEXT:6:LJ,SP><in_Status:TEXT:1:LJ,SP><#3>"
+	if "$(RecType)" EQ "15"
+		Assign f_FormatAssigned "TRUE"
+
+	if "$(RecType)" EQ "18"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>181<in_Extension:TEXT:6:LJ,SP>0000000000<in_Article:TEXT:6:LJ,SP><in_Status:TEXT:1:LJ,SP><in_PersonalNumber:TEXT:10:LJ,SP><#3>"
+	if "$(RecType)" EQ "18"
+		Assign f_FormatAssigned "TRUE"
+
+	if "$(RecType)" EQ "32"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>321<in_Extension:TEXT:6:LJ,SP>0000000000<in_Article:TEXT:6:LJ,SP><in_ArticleDescription:TEXT:30:LJ,SP><in_ArticleQuantity:TEXT:2:RJ,ZP><in_ArticleCharge:TEXT:RJ,ZP><#3>"
+	if "$(RecType)" EQ "32"
+		Assign f_FormatAssigned "TRUE"
+
+
+Return
+
+:DatabaseSwapFormat
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>251<in_Extension:TEXT:6:LJ,SP>0000000000<in_Status:TEXT:1:LJ,SP><#3>"
+	Assign f_FormatAssigned "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRecords
+;    These labels are called when we need to assign the record  for
+;    incoming records
+:HandleCallRecord
+
+	Assign WorkVal "<in_CREnd:TIME:2:HH>"
+	Assign WorkVal $(WorkVal) * 60
+	Assign in_CRDuration $(WorkVal) * 60	
+	Assign WorkVal "<in_CREnd:TIME:2:MM>"
+	Assign WorkVal $(WorkVal) * 60
+	Assign in_CRDuration $(in_CRDuration) + $(WorkVal)
+	Assign WorkVal "<in_CREnd:TIME:2:SS>"
+	Assign in_CRDuration $(in_CRDuration) + $(WorkVal)
+
+	Assign WorkVal "<in_CRStart:TIME:2:HH>"
+	Assign WorkVal $(WorkVal) * 60
+	Assign WorkTmp $(WorkVal) * 60	
+	Assign WorkVal "<in_CRStart:TIME:2:MM>"
+	Assign WorkVal $(WorkVal) * 60
+	Assign WorkTmp $(WorkTmp) + $(WorkVal)
+	Assign WorkVal "<in_CRStart:TIME:2:SS>"
+	Assign WorkTmp $(WorkTmp) + $(WorkVal)
+
+	Assign in_CRDuration $(in_CRDuration) - $(WorkTmp)
+	SecsToTime "$(in_CRDuration)" ":" "HHMMSS"
+
+	PassToDataCollection 0      <in_CRDate:DATE:8:DD:MM:YY><#13>
+	PassToDataCollection <in_CRExtension:TEXT:5:RJ,SP>   <in_CRStart:TIME:5:HH:MM> <_G_RESULT:TEXT:8:RJ,ZP>  <in_CRTrunk:TEXT:2:RJ,ZP>              <in_CRDigits:TEXT:15:LJ,SP><in_CRPulses:TEXT:5:RJ,SP>
+
+Return
+
+:HandleVoiceMessage12
+
+	if "$(in_Status)" EQ "1"
+		CreateMessageWaiting "$(in_Extension)" "TRUE"
+	if "$(in_Status)" EQ "1"
+		Echo IN: Setting MWI TRUE for $(in_Extension).
+
+	if "$(in_Status)" NE "1"
+		CreateMessageWaiting "$(in_Extension)" "FALSE"
+	if "$(in_Status)" NE "1"
+		Echo IN: Setting MWI FALSE for $(in_Extension).
+
+Return
+
+:HandleVoiceMessage29
+
+	if "$(in_Status)" EQ "00"
+		CreateMessageWaiting "$(in_Extension)" "FALSE"
+	if "$(in_Status)" EQ "00"
+		Echo IN: Setting MWI FALSE for $(in_Extension).
+
+	if "$(in_Status)" GT "00"
+		CreateMessageWaiting "$(in_Extension)" "TRUE"
+	if "$(in_Status)" GT "00"
+		Echo IN: Setting MWI TRUE for $(in_Extension).
+
+Return
+
+:HandleRoomStatus
+
+	if "$(in_Status)" NE ""
+		CreateRoomStatus "$(in_Extension)" "$(in_Status)"
+	if "$(in_Status)" NE ""
+		Echo IN: Creating Room Status for $(in_Extension) with Status $(in_Status).
+
+Return
+
+:HandleWakeup14
+
+	if "$(in_Status)" EQ "0"
+		CreateClearWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>"
+	if "$(in_Status)" EQ "0"
+		Echo IN: Clearing Wakeup at <in_Time:TIME:4:HHMM> from Extension $(in_Extension).
+
+	if "$(in_Status)" EQ "1"
+		CreateSetWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>"
+	if "$(in_Status)" EQ "1"
+		Echo IN: Setting Wakeup for <in_Time:TIME:4:HHMM> on Extension $(in_Extension).
+
+Return
+
+:HandleWakeup17
+
+	if "$(in_Status)" EQ "0"
+		CreateWakeupFailed "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>"
+	if "$(in_Status)" EQ "0"
+		Echo IN: Creating Wakeup Failed for $(in_Extension) for <in_Time:TIME:4:HHMM>.
+
+	if "$(in_Status)" EQ "1"
+		CreateWakeupDelivered "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>"
+	if "$(in_Status)" EQ "1"
+		Echo IN: Creating Wakeup Anaswered for $(in_Extension) for <in_Time:TIME:4:HHMM>.
+
+Return
+
+:HandleMinibar
+
+	CreateMiniBar "$(in_Extension)" "" "$(in_Article)" "$(in_ArticleQuantity)" "$(in_ArticleCharge)" "$(in_ArticleDescription)"
+	Echo IN: Creating Minibar for $(in_Extension) - Item: $(in_Article) Quantity: $(in_Quantity).
+
+Return
+
+:HandleDatabaseSwap
+
+	CreateDND "FFFF" "TRUE"
+	Echo IN: Creating DND for FFFF to initate a Database Swap.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 5
+
+:SendRecord_WaitForACK
+
+	Sleep 100
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo SR: Timeout waiting for ACK to Record
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Sleep 1000
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotACKToRec
+
+	Goto SendRecord_WaitForACK
+
+:SendRecord_GotACKToRec
+
+	Assign g_Status ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ResetDataVariables
+;   This label is called just before we receive a record to clear all
+;   previously stored in variables.
+:ResetDataVariables
+
+	Assign f_FormatAssigned "FALSE"
+	Assign RecType ""
+	Assign in_Article "9999"
+	Assign in_ArticleCharge "0"
+	Assign in_ArticleDescription ""
+	Assign in_ArticleQuantity "1"
+	Assign in_CRCat ""
+	Assign in_CRCharge ""
+	Assign in_CRCode ""
+	Assign in_CRCost ""
+	Assign in_CRDate ""
+	Assign in_CRDestination ""
+	Assign in_CRDigits ""
+	Assign in_CRDuration ""
+	Assign in_CREnd ""
+	Assign in_CRExtension ""
+	Assign in_CRGroup ""
+	Assign in_CRPulses ""
+	Assign in_CRSatellite ""
+	Assign in_CRService ""
+	Assign in_CRSetupCode ""
+	Assign in_CRStart ""
+	Assign in_CRSystemID ""
+	Assign in_CRTrunk ""
+	Assign in_CRType ""
+	Assign in_Date ""
+	Assign in_Dummy ""
+	Assign in_Extension ""
+	Assign in_PersonalNumber ""
+	Assign in_Status ""
+	Assign in_Time ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

@@ -1,0 +1,940 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;	
+;  This is the HI configuration script for interfacing to a Hicom
+;  telephone exchange.
+;                                                              pjh-170203
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define ReceivedRec
+
+; Options
+define Password					// Password to login to Hicon.
+define BarCOS					// COS to send to bar extn.
+define UnbarCOS					// COS to send to unbar extn.
+define BlankNameFmt				// Format for blank name
+define ExtnLength				// Length of Extn Number.
+define NameLength				// Length of Guest Name.
+define PauseBeforeLogin			// Milliseconds to pause before a login.
+define LogoutTimeout			// Seconds before we auto-logout
+define CmdTimeout				// Seconds to wait after sending a command before timing out
+
+; Flags used through the script
+define SendRec					// Where we build our records to send
+define Idle						// Are we Idle waiting for a timeout to happen?
+define AwaitingString			// A string that we are waiting to receive.
+define fCmdSent					// Have we sent a command?
+define fError					// Did we encounter an error while processing a command?
+define fPINError					// Did we encounter an error while processing a command?
+define GotWaitString			// Have we got the string we're waiting for?
+define RetryCount				// How many times have we tried this record?
+define Flag
+define fNeedLogin
+define fNeededLogin
+define LoggedIn
+
+; Variables
+define GuestName				// Stores the Guest name during room transfers.
+define AllowCalls				// Used to store whether extn can make calls.
+define Retries					// Number of retries on a command.
+
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when the interface starts up.
+:INIT
+
+; OPT: Set this to be the username for logging into the Hicom.
+assign Username "root"
+
+; OPT: Set this to be the password for logging into the Hicom.
+assign Password "hicom"
+
+; OPT: The next 2 lines set the COS for Barred/Unbarred lines.
+assign BarCOS 0
+assign UnbarCOS 10
+
+; OPT: The next line specifies the name assigned to an extn in a vacant room.
+assignasis BlankNameFmt "VACANT <_EV_ROOMNUMBER:TEXT:$(ExtnLength):LJ>"
+
+; OPT: The next line specifies the length of the extension numbers on the PBX.
+assign ExtnLength 5
+
+; OPT: The next line specifies the length of names to send to the PBX.
+assign NameLength 25
+
+; OPT: This line sets the pause in milliseconds between login attempts.
+assign PauseBeforeLogin 5000
+
+; OPT: The next 2 lines specify the timeouts in seconds for logouts and commands.
+assign LogoutTimeout 120
+assign CmdTimeout 20
+
+; Default some variables. DON'T CHANGE THESE!
+assign ReceivedRec ""
+assign AwaitingString ""
+assign LoggedIn "FALSE"
+assign Idle "FALSE"
+assign fCmdSent "FALSE"
+assign RetryCount 0
+assign fNeedLogin "FALSE"
+
+; Make sure the port is closed.
+ClosePort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+assign RetryCount 0
+
+:RetryCheckin
+
+if "$(RetryCount)" GT "3"
+	Call Logout
+if "$(RetryCount)" GT "3"
+	assign RetryCount 0
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+
+; Build record
+assign SendRec "CHA-PERSI:NAME,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,,\"<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ>\";"
+
+; Send the record
+Echo Tx: $(SendRec)<#3>
+send $(SendRec)<#3>
+
+call TakeWhatsComing
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign AwaitingString "CHANGE COMPLETED;"
+call TakeWhatsComing
+
+if "$(fNeedLogin)" EQ "TRUE"
+	Assign fNeededLogin "TRUE"
+
+if "$(fNeededLogin)" EQ "TRUE"
+	Call SendPassword
+if "$(fNeededLogin)" EQ "TRUE"
+	assign AwaitingString "CHANGE COMPLETED;"
+if "$(fNeededLogin)" EQ "TRUE"
+	call TakeWhatsComing
+
+Assign fNeededLogin "FALSE"
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo "Er: Didn't get completed string. Assuming failed."
+if "$(GotWaitString)" NE "TRUE"
+	Assign RetryCount $(RetryCount) + 1
+if "$(GotWaitString)" NE "TRUE"
+	Call CancelCommand
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryCheckin
+
+
+; Start a timer for logout
+StartWaitTimer $(LogoutTimeout)
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+assign RetryCount 0
+
+:RetryCheckout
+
+if "$(RetryCount)" GT "3"
+	Call Logout
+if "$(RetryCount)" GT "3"
+	assign RetryCount 0
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+
+; Clear the Name on the extn
+; Build our record
+assign SendRec "CHA-PERSI:NAME,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,,\"$(BlankNameFmt)\";"
+
+; Send the record
+echo Tx: $(SendRec)<#3>
+send $(SendRec)<#3>
+
+call TakeWhatsComing
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign AwaitingString "CHANGE COMPLETED;"
+call TakeWhatsComing
+
+if "$(fNeedLogin)" EQ "TRUE"
+	Assign fNeededLogin "TRUE"
+
+if "$(fNeededLogin)" EQ "TRUE"
+	Call SendPassword
+if "$(fNeededLogin)" EQ "TRUE"
+	assign AwaitingString "CHANGE COMPLETED;"
+if "$(fNeededLogin)" EQ "TRUE"
+	call TakeWhatsComing
+
+Assign fNeededLogin "FALSE"
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo "Er: Didn't get completed string. Assuming failed."
+if "$(GotWaitString)" NE "TRUE"
+	Assign RetryCount "$(RetryCount)" + 1
+if "$(GotWaitString)" NE "TRUE"
+	Call CancelCommand
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryCheckout
+
+; Start a timer for logout
+StartWaitTimer $(LogoutTimeout)
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+assign RetryCount 0
+
+:RetryRoomUpdate
+
+if "$(RetryCount)" GT "3"
+	Call Logout
+if "$(RetryCount)" GT "3"
+	assign RetryCount 0
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+ 
+; Build record
+assign SendRec "CHA-PERSI:NAME,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,,\"<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ>\";"
+
+; Send the record
+Echo Tx: $(SendRec)<#3>
+send $(SendRec)<#3>
+
+call TakeWhatsComing
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign AwaitingString "CHANGE COMPLETED;"
+call TakeWhatsComing
+
+if "$(fNeedLogin)" EQ "TRUE"
+	Assign fNeededLogin "TRUE"
+
+if "$(fNeededLogin)" EQ "TRUE"
+	Call SendPassword
+if "$(fNeededLogin)" EQ "TRUE"
+	assign AwaitingString "CHANGE COMPLETED;"
+if "$(fNeededLogin)" EQ "TRUE"
+	call TakeWhatsComing
+
+Assign fNeededLogin "FALSE"
+if "$(GotWaitString)" NE "TRUE"
+	Echo "Er: Didn't get completed string. Assuming failed."
+if "$(GotWaitString)" NE "TRUE"
+	Assign RetryCount "$(RetryCount)" + 1
+if "$(GotWaitString)" NE "TRUE"
+	Call CancelCommand
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryRoomUpdate
+
+; Start a timer for logout
+StartWaitTimer $(LogoutTimeout)
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+assign RetryCount 0
+
+:RetryRoomXfer
+
+if "$(RetryCount)" GT "3"
+	Call Logout
+if "$(RetryCount)" GT "3"
+	assign RetryCount 0
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+
+; Set our variables first.
+QueryGuestName "$(_EV_EXTNNUMBER)"
+assign GuestName $(_G_RESULT)
+
+QueryAllowCalls "$(_EV_EXTNNUMBER)"
+assign AllowCalls $(_G_RESULT)
+
+; Clear the Name on the source extn
+; Build record
+assign SendRec "CHA-PERSI:NAME,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,,\"$(BlankNameFmt)\";"
+
+; Send the record
+Echo Tx: $(SendRec)<#3>
+send $(SendRec)<#3>
+
+call TakeWhatsComing
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign AwaitingString "CHANGE COMPLETED;"
+call TakeWhatsComing
+
+if "$(fNeedLogin)" EQ "TRUE"
+	Assign fNeededLogin "TRUE"
+
+if "$(fNeededLogin)" EQ "TRUE"
+	Call SendPassword
+if "$(fNeededLogin)" EQ "TRUE"
+	assign AwaitingString "CHANGE COMPLETED;"
+if "$(fNeededLogin)" EQ "TRUE"
+	call TakeWhatsComing
+
+Assign fNeededLogin "FALSE"
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo "Er: Didn't get completed string. Assuming failed."
+if "$(GotWaitString)" NE "TRUE"
+	Assign RetryCount "$(RetryCount)" + 1
+if "$(GotWaitString)" NE "TRUE"
+	Call CancelCommand
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryRoomXfer
+
+Assign RetryCount 0
+
+:RetryRoomXfer2
+
+if "$(RetryCount)" GT "3"
+	Call Logout
+if "$(RetryCount)" GT "3"
+	assign RetryCount 0
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+
+; Set Name on destination
+; Build record
+assign SendRec "CHA-PERSI:NAME,<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):LJ>,,\"<NAMEDISPLAY:TEXT:$(NameLength):LJ>\";"
+
+; Send the record
+Echo Tx: $(SendRec)<#3>
+send $(SendRec)<#3>
+
+call TakeWhatsComing
+
+; Wait for reply
+assign fCmdSent "TRUE"
+assign AwaitingString "CHANGE COMPLETED;"
+call TakeWhatsComing
+
+if "$(fNeedLogin)" EQ "TRUE"
+	Assign fNeededLogin "TRUE"
+
+if "$(fNeededLogin)" EQ "TRUE"
+	Call SendPassword
+if "$(fNeededLogin)" EQ "TRUE"
+	assign AwaitingString "CHANGE COMPLETED;"
+if "$(fNeededLogin)" EQ "TRUE"
+	call TakeWhatsComing
+
+Assign fNeededLogin "FALSE"
+if "$(GotWaitString)" NE "TRUE"
+	Echo "Er: Didn't get completed string. Assuming failed."
+if "$(GotWaitString)" NE "TRUE"
+	Assign RetryCount "$(RetryCount)" + 1
+if "$(GotWaitString)" NE "TRUE"
+	Call CancelCommand
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryRoomXfer2
+
+; Start a timer for logout
+StartWaitTimer $(LogoutTimeout)
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+assign fPINError "FALSE"
+
+; Check we're logged in, if we're not then do so
+if "$(LoggedIn)" NE "TRUE"
+	Call Login
+
+IsMasterExtn "$(_EV_EXTNNUMBER)"
+
+if "$(_G_RESULT)" NE "TRUE"
+	goto PIN_SKIP
+
+if "$(_EV_PINACTION)" EQ "SET"
+	goto SET_PIN
+if "$(_EV_PINACTION)" EQ "CLEAR"
+	goto CLEAR_PIN
+
+:PIN_SKIP
+
+goto HandleOKAndExit
+
+:SET_PIN
+
+assign RetryCount 0
+
+:RetrySetPin
+	assign fPINError "FALSE"
+	
+	if "$(RetryCount)" GT "3"
+		Call Logout
+	if "$(RetryCount)" GT "3"
+		assign RetryCount 0
+
+	; Check we're logged in, if we're not then do so
+	if "$(LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "ADD-PERSI:STN,<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ>,,,,,,,<_EV_PIN:TEXT:5:LJ>,,,YES;"
+
+	; Send the record
+	Echo Tx: $(SendRec)<#3>
+	send $(SendRec)<#3>
+
+	; Getting echo back
+	call TakeWhatsComing
+
+	; Wait for reply
+	assign fCmdSent "TRUE"
+	assign AwaitingString "ADD COMPLETED;"
+	call TakeWhatsComing
+
+	if "$(fNeedLogin)" EQ "TRUE"
+		Assign fNeededLogin "TRUE"
+
+	if "$(fNeededLogin)" EQ "TRUE"
+		Call SendPassword
+	if "$(fNeededLogin)" EQ "TRUE"
+		assign AwaitingString "ADD COMPLETED;"
+	if "$(fNeededLogin)" EQ "TRUE"
+		call TakeWhatsComing
+
+	Assign fNeededLogin "FALSE"
+
+	; If we got an error we delete the PIN and go back to the beginning.
+	if "$(fError)" EQ "TRUE"
+		assign fPINError "TRUE"
+
+	if "$(fPINError)" EQ "TRUE"
+		Call CancelCommand
+	if "$(fPINError)" EQ "TRUE"
+		call SetPin_UnsetPin
+	if "$(fPINError)" EQ "TRUE"
+		goto RetrySetPin
+
+	if "$(GotWaitString)" NE "TRUE"
+		Echo Er: Didn't get completed string. Assuming failed.
+	if "$(GotWaitString)" NE "TRUE"
+		Assign RetryCount "$(RetryCount)" + 1
+	if "$(GotWaitString)" NE "TRUE"
+		Call CancelCommand
+	if "$(GotWaitString)" NE "TRUE"
+		goto RetrySetPin
+		
+	; Start a timer for logout
+	StartWaitTimer $(LogoutTimeout)
+	
+goto HandleOKAndExit
+	
+:CLEAR_PIN
+
+assign RetryCount 0
+
+:RetryClearPin
+	if "$(RetryCount)" GT "3"
+		Call Logout
+	if "$(RetryCount)" GT "3"
+		assign RetryCount 0
+
+	; Check we're logged in, if we're not then do so
+	if "$(LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "DEL-PERSI:PIN,<_EV_PIN:TEXT:5:LJ>;"
+
+	; Send the record
+	Echo Tx: $(SendRec)<#3>
+	send $(SendRec)<#3>
+
+	call TakeWhatsComing
+
+	; Wait for reply
+	assign fCmdSent "TRUE"
+	assign AwaitingString "DELETE COMPLETED;"
+	call TakeWhatsComing
+
+	if "$(fNeedLogin)" EQ "TRUE"
+		Assign fNeededLogin "TRUE"
+
+	if "$(fNeededLogin)" EQ "TRUE"
+		Call SendPassword
+	if "$(fNeededLogin)" EQ "TRUE"
+		assign AwaitingString "DELETE COMPLETED;"
+	if "$(fNeededLogin)" EQ "TRUE"
+		call TakeWhatsComing
+
+	Assign fNeededLogin "FALSE"
+
+	if "$(GotWaitString)" NE "TRUE"
+		Echo "Er: Didn't get completed string. Assuming failed."
+	if "$(GotWaitString)" NE "TRUE"
+		Assign RetryCount "$(RetryCount)" + 1
+	if "$(GotWaitString)" NE "TRUE"
+		Call CancelCommand
+	if "$(GotWaitString)" NE "TRUE"
+		goto RetryClearPin
+		
+	; Start a timer for logout
+	StartWaitTimer $(LogoutTimeout)
+	
+goto HandleOKAndExit
+; ************************************************************************
+
+:SetPin_UnsetPin
+	Echo Deleting PIN for resetting.
+
+	if "$(LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "DEL-PERSI:PIN,<_EV_PIN:TEXT:5:LJ>;"
+
+	; Send the record
+	Echo Tx: $(SendRec)<#3>
+	send $(SendRec)<#3>
+
+	call TakeWhatsComing
+
+	; Wait for reply
+	assign fCmdSent "TRUE"
+	assign AwaitingString "DELETE COMPLETED;"
+	call TakeWhatsComing
+
+Return
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is carried out from here when the program is idle and bytes
+;    have been received on the port.
+; ************************************************************************
+:CheckIncoming
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  PeriodicCheck
+;    Execution is carried out from here periodically when the program is
+;    idle.
+; ************************************************************************
+:PeriodicCheck
+
+; If we're not logged in don't do anything.
+if "$(LoggedIn)" NE "TRUE"
+	Exit
+
+; We're logged in, check for idle timeout and call logout if need be
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	call Logout
+	
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;    Carries out the task of logging in.
+; ************************************************************************
+:Login
+
+; Sleep for the required amount of time before attempting to login
+Sleep $(PauseBeforeLogin)
+
+OpenPort
+
+:RetryLogin
+
+sleep 2000
+
+; Send a Ctrl-X
+Echo Tx: Ctrl-X
+Send <#24>
+
+; Send a Ctrl-T
+echo Tx: Ctrl-T
+send <#20>
+
+sleep 2000
+
+; Wait for banner
+assign fCmdSent "TRUE"
+assign AwaitingString "L O G O N"
+call TakeWhatsComing
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo Er: Login Failed, retrying in $(PauseBeforeLogin) milliseconds...
+if "$(GotWaitString)" NE "TRUE"
+	Send <#24>
+if "$(GotWaitString)" NE "TRUE"
+	Echo Tx: Ctrl-X
+if "$(GotWaitString)" NE "TRUE"
+	ClosePort
+if "$(GotWaitString)" NE "TRUE"
+	Sleep $(PauseBeforeLogin)
+if "$(GotWaitString)" NE "TRUE"
+	OpenPort
+if "$(GotWaitString)" NE "TRUE"
+	goto RetryLogin
+
+assign LoggedIn "TRUE"
+
+return
+; ************************************************************************
+
+; ************************************************************************
+;  SendPassword
+; ************************************************************************
+:SendPassword
+
+; Send the password
+echo Tx: ******<#3>
+send $(Password)<#3>
+
+; Get password echo back
+call TakeWhatsComing
+
+; Reset need login.
+assign fNeedLogin "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComing
+;    Continues to receive and echo lines that end in CR until a specific
+;	  line is received.
+; ************************************************************************
+:TakeWhatsComing
+
+assign Flag "FALSE"
+assign fError "FALSE"
+assign GotWaitString "FALSE"
+
+:GetNextLine
+
+; Start a fresh record
+assign ReceivedRec ""
+
+; Set up Timeout
+StartWaitTimer $(CmdTimeout)
+
+:TakeWhatsComing_Read
+
+; Read the next character
+ReadFromPort 1 1
+
+; If we've timed out.
+if "$(Flag)" EQ "TRUE"
+	Echo Er: Timeout waiting for ETX.
+if "$(Flag)" EQ "TRUE"
+	Return
+	
+; Nothing received, wait longer
+if "$(_PORTCHARS)" EQ ""
+	call TakeWhatsComing_TestTimer
+if "$(_PORTCHARS)" EQ ""
+	goto TakeWhatsComing_Read
+
+; Add the received character to the record if it is not LF or CR
+if "$(_PORTCHARS)" EQ "<#10>"
+	goto TWC_SkipAdd
+if "$(_PORTCHARS)" EQ "<#13>"
+	goto TWC_SkipAdd
+
+assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+:TWC_SkipAdd
+
+if "$(fCmdSent)" EQ "TRUE"
+	call TakeWhatsComing_TestError
+
+; If we've already found what we're looking for we're just waiting for an ETX.
+if "$(GotWaitString)" EQ "TRUE"
+	goto TWC_SkipCheckString
+
+; Check to see if this line now contains the string we're waiting for.
+ContainsStr "$(AwaitingString)" "$(ReceivedRec)" "TRUE"
+
+if "$(_G_RESULT)" EQ "TRUE"
+	assign GotWaitString "TRUE"
+
+:TWC_SkipCheckString
+
+; If we get an ETX then echo this line and return as it's the end of the reply.
+if "$(_PORTCHARS)" EQ "<#3>"
+	Call TWC_EchoLine
+if "$(_PORTCHARS)" EQ "<#3>"
+	Return
+if "$(_PORTCHARS)" EQ "<#3>"
+	assign fCmdSent "FALSE"
+
+; if it is a complete record terminated by CR, Echo it and start again.
+if "$(_PORTCHARS)" EQ "<#13>"
+	Call TWC_EchoLine
+if "$(_PORTCHARS)" EQ "<#13>"
+	goto GetNextLine
+
+; Carry on reading the current record
+goto TakeWhatsComing_Read
+
+:TWC_EchoLine
+
+if "$(ReceivedRec)" NE ""
+	Echo Rx: $(ReceivedRec)
+Return
+
+:TakeWhatsComing_TestTimer
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	assign Flag "TRUE"
+return
+
+; Check if we got an error back. If so flag it and return.
+:TakeWhatsComing_TestError
+
+; Check to see if PIN already assigned.
+ContainsStr "ALREADY ASSIGNED TO A STATION" "$(ReceivedRec)" "TRUE"
+
+if "$(_G_RESULT)" EQ "TRUE"
+	assign fError "TRUE"
+
+; Check to see if we need to login.
+ContainsStr "PLEASE ENTER PASSWORD; SECURITY LEVEL INSUFFICIENT" "$(ReceivedRec)" "TRUE"
+
+if "$(_G_RESULT)" EQ "TRUE"
+	assign fNeedLogin "TRUE"
+
+return
+; ************************************************************************
+
+; ************************************************************************
+;  Logout
+;    Carries out the task of logging out.
+; ************************************************************************
+:Logout
+
+Echo Info: Logging out..
+
+; Send Ctrl-X command
+Send <#24>
+Echo Tx: Ctrl-X
+
+; Wait for confirmation
+assign fCmdSent "TRUE"
+assign AwaitingString "DISCONNECTED"
+call TakeWhatsComing
+
+if "$(GotWaitString)" NE "TRUE"
+	Echo Er: Logoff failed, dropping DTR
+
+; Reset logged in flag.
+assign LoggedIn "FALSE"
+
+ClosePort
+
+return
+; ************************************************************************
+
+; ************************************************************************
+; CancelCommand
+; ************************************************************************
+:CancelCommand
+
+Send <#24>
+Echo Tx: Ctrl-X
+
+; Wait for confirmation
+assign fCmdSent "TRUE"
+assign AwaitingString "TERMINATED;"
+call TakeWhatsComing
+
+; If we timed out.. We've either overdone it and logged out or something's 
+; gone wrong. Retry login
+if "$(Flag)" EQ "TRUE"
+	assign LoggedIn "FALSE"
+if "$(Flag)" EQ "TRUE"
+	Return
+
+if "$(GotWaitString)" NE "TRUE"
+	goto CancelCommand
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+Exit
+; ************************************************************************

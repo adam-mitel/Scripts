@@ -1,0 +1,1204 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.3.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a Huawei U1900
+;
+;                                                              AU-20131017
+;
+;  Modifications - AU - 2017-10-04 - 50.0.3.0
+;	* Made the criteria for detecting being logged out stricter to
+;	  prevent getting into login loops
+;
+;  Modifications - AU - 2015-03-30 - 50.0.2.0
+;	* Modified the expected reply to sending the Password to cater for
+;	  more Huawei models
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+;
+define f_Error
+define f_GotReplyString
+define f_LoggedIn
+;
+define g_GuestName
+;
+define s_SystemUsername
+define s_SystemPassword
+define s_EnablePassword
+define s_Wakeups
+define s_DND
+define s_DNDType
+define s_EnableVoicemail
+define s_UMSNumber
+;
+define v_ReplyString
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Set the System Username and Password
+	Assign s_SystemUsername "admin"
+	Assign s_SystemPassword "P@ssw0rd"
+
+//	OPT: Set the Enable Username and Password
+	Assign s_EnablePassword "P@ssw0rd"
+
+//	OPT: Set whether we should instruct the Huawei to deliver Wakeup calls
+	Assign s_Wakeups "FALSE"
+
+//	OPT: Set whether we should enable Voicemail for Guest Extensions
+	Assign s_EnableVoicemail "FALSE"
+
+//	OPT: Set the UMS Number which represents Voicemail
+	Assign s_UMSNumber "0"
+
+//	OPT: Set whether we should process DND events
+	Assign s_DND "TRUE"
+
+//	OPT: Set whether we should set the lines to Busy or divert all
+//	     calls to Voicemail for DND events
+//	     Options are "BUSY" or "VOICEMAIL"
+	Assign s_DNDType "VOICEMAIL"
+
+	Assign f_LoggedIn "FALSE"
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	Sleep 1000
+
+	Call Login
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	if "<s_Wakeups:TEXT:20:UC>" NE "TRUE"
+		Goto IgnoreRecord
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto Wakeup_Set
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto Wakeup_Clear
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto Wakeup_Clear
+
+:Wakeup_Set
+
+	Assign SendRec "config add wakeup dn $(_EV_EXTNNUMBER) time <_EV_WKTIME:TIME:8:HH:MM:SS>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set wakeup extension $(_EV_EXTNNUMBER).
+
+	Goto Wakeup_Finished
+
+:Wakeup_Clear
+
+	Assign SendRec "config delete wakeup dn $(_EV_EXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to clear wakeup extension $(_EV_EXTNNUMBER).
+
+	Goto Wakeup_Finished
+
+:Wakeup_Finished
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+	ReplaceStr "$(g_GuestName)" " " "_" "TRUE" "FALSE"
+	Assign g_GuestName "$(_G_RESULT)"
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) username <g_GuestName:TEXT:32:>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set the name for extension $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local&ddd&idd"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to unbar the line for extension $(_EV_EXTNNUMBER).
+
+	if "<s_EnableVoicemail:TEXT:20:UC>" NE "TRUE"
+		Goto HandleOKAndExit
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice add newservicerights voicemailcfb&voicemailcfnr umsno $(s_UMSNumber)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type voicemailcfnr"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on No Asnwer for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type voicemailcfb"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on Busy for $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "VACANT_$(_EV_EXTNNUMBER)"
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) username <g_GuestName:TEXT:32:>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set the name for extension $(_EV_EXTNNUMBER).
+
+	; Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local"
+	; Assign v_ReplyString "Command executed success"
+	; Call SendRecord
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout del outgoingrights ddd&idd"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to bar the line for extension $(_EV_EXTNNUMBER).
+
+	if "<s_EnableVoicemail:TEXT:20:UC>" NE "TRUE"
+		Goto HandleOKAndExit
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice del newservicerights voicemailcfb&voicemailcfnr&voicemailcfu"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber newservices defaultvalue dn $(_EV_EXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable service features for $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout del outgoingrights ddd&idd"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to bar the line for extension $(_EV_EXTNNUMBER).
+
+	Assign SendRec ""
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local&ddd&idd"
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local&ddd"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout add outgoingrights inter&local&ddd&idd"
+
+	if "$(SendRec)" EQ ""
+		Goto ClassOfService_Finished
+
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to unbar the line for extension $(_EV_EXTNNUMBER).
+
+:ClassOfService_Finished
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_EXTNNUMBER) EQ ""
+		Goto RoomTransfer_Checkin
+
+	Assign g_GuestName "VACANT_$(_EV_EXTNNUMBER)"
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) username <g_GuestName:TEXT:32:>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set the name for extension $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operateout del outgoingrights local&ddd&idd"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to bar the line for extension $(_EV_EXTNNUMBER).
+
+	if "<s_EnableVoicemail:TEXT:20:UC>" NE "TRUE"
+		Goto RoomTransfer_Checkin
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice del newservicerights voicemailcfb&voicemailcfnr&voicemailcfu"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber newservices defaultvalue dn $(_EV_EXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable service features for $(_EV_EXTNNUMBER).
+
+:RoomTransfer_Checkin
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto RoomTransfer_Finished
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+	ReplaceStr "$(g_GuestName)" " " "_" "TRUE" "FALSE"
+	Assign g_GuestName "$(_G_RESULT)"
+
+	Assign SendRec "config modify subscriber dn $(_EV_TRDESTEXTNNUMBER) username <g_GuestName:TEXT:32:>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set the name for extension $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "config modify subscriber dn $(_EV_TRDESTEXTNNUMBER) operateout add outgoingrights inter&local&ddd&idd"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to unbar the line for extension $(_EV_TRDESTEXTNNUMBER).
+
+	if "<s_EnableVoicemail:TEXT:20:UC>" NE "TRUE"
+		Goto HandleOKAndExit
+
+	Assign SendRec "config modify subscriber newservices defaultvalue dn $(_EV_TRDESTEXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	Assign SendRec "config modify subscriber dn $(_EV_TRDESTEXTNNUMBER) operatenewservice add newservicerights voicemailcfb&voicemailcfnr umsno $(s_UMSNumber)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set Voicemail UMS for $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_TRDESTEXTNNUMBER) type voicemailcfnr"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on No Asnwer for $(_EV_TRDESTEXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_TRDESTEXTNNUMBER) type voicemailcfb"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on Busy for $(_EV_TRDESTEXTNNUMBER).
+
+:RoomTransfer_Finished
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "<s_DND:TEXT:20:UC>" NE "TRUE"
+		Goto IgnoreRecord
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Goto DoNotDisturb_Set
+	if "$(_EV_DNDACTION)" EQ "DISTURBABLE"
+		Goto DoNotDisturb_Clear
+
+	Echo Er: Unsupported _EV_DNDACTION: "$(_EV_DNDACTION)"
+	Goto IgnoreRecord
+
+:DoNotDisturb_Set
+
+	if "<s_DNDType:TEXT:20:UC>" NE "BUSY"
+		Goto DoNotDisturb_Set_Voicemail
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type dds"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set DND for extension $(_EV_EXTNNUMBER).
+
+	Goto DoNotDisturb_Finished
+
+:DoNotDisturb_Set_Voicemail
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice del newservicerights voicemailcfb&voicemailcfnr&voicemailcfu"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber newservices defaultvalue dn $(_EV_EXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable service features for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice add newservicerights voicemailcfu umsno $(s_UMSNumber)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set Voicemail Unconditional UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type voicemailcfu"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding Unconditional for $(_EV_EXTNNUMBER).
+
+	Goto DoNotDisturb_Finished
+
+:DoNotDisturb_Clear
+
+	if "<s_DNDType:TEXT:20:UC>" NE "BUSY"
+		Goto DoNotDisturb_Clear_Voicemail
+
+	Assign SendRec "config deactiveservice dn $(_EV_EXTNNUMBER) type dds"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to clear DND for extension $(_EV_EXTNNUMBER).
+
+	Goto DoNotDisturb_Finished
+
+:DoNotDisturb_Clear_Voicemail
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice del newservicerights voicemailcfb&voicemailcfnr&voicemailcfu"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config modify subscriber newservices defaultvalue dn $(_EV_EXTNNUMBER)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to disable service features for $(_EV_EXTNNUMBER).
+
+	if "<s_EnableVoicemail:TEXT:20:UC>" NE "TRUE"
+		Goto DoNotDisturb_Finished
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) operatenewservice add newservicerights voicemailcfb&voicemailcfnr umsno $(s_UMSNumber)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set Voicemail UMS for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type voicemailcfnr"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on No Asnwer for $(_EV_EXTNNUMBER).
+
+	Assign SendRec "config activeservice dn $(_EV_EXTNNUMBER) type voicemailcfb"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to enable Voicemail forwarding on Busy for $(_EV_EXTNNUMBER).
+
+:DoNotDisturb_Finished
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+	if "$(_EV_DDIACTION)" EQ "SET"
+		Goto DDI_Set
+	if "$(_EV_DDIACTION)" EQ "CLEAR"
+		Goto DDI_Clear
+
+	Echo Er: Unsupported _EV_DDIACTION: "$(_EV_DDIACTION)"
+	Goto IgnoreRecord
+
+:DDI_Set
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) longdn $(_EV_DDI)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to forward DDI $(_EV_DDI) to extension $(_EV_EXTNNUMBER).
+
+	Goto DDI_Finished
+
+:DDI_Clear
+
+	Assign SendRec "config delete longdn dn $(_EV_DDI)"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to clear forwarding from DDI $(_EV_DDI) to extension $(_EV_EXTNNUMBER).
+
+	Goto DDI_Finished
+
+:DDI_Finished
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Send <#13><#10>
+	Call ReadEverything
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Goto ReceiveRecord_ReadChar
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+	Assign ReceivedRec ""
+
+	Sleep 100
+
+	StartWaitTimer 2
+
+:ReceiveRecord_ReadChar
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReceiveRecord_GotLine
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto ReceiveRecord_GotLine
+	if "$(_PORTCHARS)" EQ "<#31>"
+		Goto ReceiveRecord_GotLine
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReceiveRecord_Finished
+
+	Goto ReceiveRecord_ReadChar
+
+:ReceiveRecord_GotLine
+
+//	Check if we have the expected reply
+	ContainsStr "<v_ReplyString:TEXT:500:UC>" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+//	Check if the function is already enabled
+	ContainsStr "NO NEED TO ADD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+//	Check if the command failed
+	ContainsStr "COMMAND EXECUTED FAILED" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_Error "TRUE"
+
+//	Check if we need to Login
+	ContainsStr ".LOGIN" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+//	Check if we need to Login
+	ContainsStr ".PASSWORD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+	if "$(ReceivedRec)" EQ ""
+		Goto ReceiveRecord
+
+//	Do not echo if we don't need to
+	ContainsStr "]#" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto ReceiveRecord
+
+	if "$(ReceivedRec)" NE "$(SendRec)"
+		Echo Rx: $(ReceivedRec)
+
+	ContainsStr "!  ====" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	Goto ReceiveRecord
+
+:ReceiveRecord_Finished
+
+//	Check if we have the expected reply
+	ContainsStr "<v_ReplyString:TEXT:500:UC>" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+//	Check if the function is already enabled
+	ContainsStr "NO NEED TO ADD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+//	Check if the command failed
+	ContainsStr "COMMAND EXECUTED FAILED" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_Error "TRUE"
+
+//	Check if we need to Login
+	ContainsStr ".LOGIN" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+//	Check if we need to Login
+	ContainsStr ".PASSWORD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+	if "$(ReceivedRec)" EQ ""
+		Goto ReceiveRecord_ReadChar
+
+//	Do not echo if we don't need to
+	ContainsStr "]#" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto ReceiveRecord_ReadChar
+
+	if "$(ReceivedRec)" NE "$(SendRec)"
+		Echo Rx: $(ReceivedRec)
+
+	ContainsStr "<#255><#253><#166>" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleHeartbeat
+
+	ContainsStr "!  ====" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	Assign ReceivedRec ""
+
+Goto ReceiveRecord_ReadChar
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReadEverything
+;   This label is called when we need to read all incoming records from
+;   the PBX.
+:ReadEverything
+
+	Assign ReceivedRec ""
+
+	Sleep 100
+
+	StartWaitTimer 2
+
+:ReadEverything_ReadChar
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReadEverything_GotLine
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto ReadEverything_GotLine
+	if "$(_PORTCHARS)" EQ "<#31>"
+		Goto ReadEverything_GotLine
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReadEverything_Finished
+
+	Goto ReadEverything_ReadChar
+
+:ReadEverything_GotLine
+
+	if "$(ReceivedRec)" EQ ""
+		Goto ReadEverything
+
+//	Do not echo if we don't need to
+	ContainsStr "]#" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto ReadEverything
+
+	if "$(ReceivedRec)" NE "$(SendRec)"
+		Echo Rx: $(ReceivedRec)
+
+	Goto ReadEverything
+
+:ReadEverything_Finished
+
+	if "$(ReceivedRec)" EQ ""
+		Goto ReadEverything_ReadChar
+
+//	Do not echo if we don't need to
+	ContainsStr "]#" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto ReadEverything
+
+//	Check if we need to Login
+	ContainsStr "LOGIN" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+//	Check if we need to Login
+	ContainsStr "PASSWORD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_LoggedIn "FALSE"
+
+	if "$(ReceivedRec)" NE "$(SendRec)"
+		Echo Rx: $(ReceivedRec)
+
+	ContainsStr "<#255><#253><#166>" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleHeartbeat
+
+	Assign ReceivedRec ""
+
+Goto ReadEverything
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleHeartbeat
+;   This label is called when we have a Heartbeat to handle
+:HandleHeartbeat
+
+	Send <#255><#252><#166>
+	Echo Tx: <#255><#252><#166>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Call ResetVariables
+
+	Send $(SendRec)<#13><#10>
+	if "$(SendRec)" NE ""
+		Echo Tx: $(SendRec)
+
+	Call ReceiveRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;   This label is called when we have to Login to the PBX
+:Login
+
+	QueryPortOpen
+	if "$(_G_RESULT)" EQ "TRUE"
+		ClosePort
+	if "$(_G_RESULT)" EQ "TRUE"
+		Sleep 1000
+
+	OpenPort
+	Sleep 500
+
+	Assign v_ReplyString "Login"
+	Call ReceiveRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_SendUsername
+
+	Echo Er: Did not successfully log in.
+
+	Goto Logout
+
+:Login_SendUsername
+
+	Assign SendRec "$(s_SystemUsername)"
+	Assign v_ReplyString "Password"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_SendPassword
+
+	Echo Er: Did not get Password prompt.
+
+	Goto Logout
+
+:Login_SendPassword
+
+	Assign SendRec "$(s_SystemPassword)"
+	Assign v_ReplyString "[%eSpace"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_Enable
+
+	Echo Er: Did not get succeed prompt.
+
+	Goto Logout
+
+:Login_Enable
+
+	Assign SendRec "enable"
+	Assign v_ReplyString "Password"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_EnablePassword
+
+	Echo Er: Did not get Password prompt.
+
+	Goto Logout
+
+:Login_EnablePassword
+
+	Assign SendRec "$(s_EnablePassword)"
+	Assign v_ReplyString "succeed"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_SetTimeout
+
+	Echo Er: Did not get succeed prompt.
+
+	Goto Logout
+
+:Login_SetTimeout
+
+	Assign SendRec "set idle_timeout 0"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" EQ "TRUE"
+		Goto Login_Complete
+
+	Echo Er: Did not get Command success prompt.
+
+	Goto Logout
+
+:Login_Complete
+
+	Assign f_LoggedIn "TRUE"
+
+	Assign SendRec "show system time"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo If: Unable to display the PBX current time
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Logout
+;   This label is called when we have to Logout of the PBX
+:Logout
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Assign f_LoggedIn "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Return
+
+	Assign SendRec "Q"
+	Call SendRecord
+
+	Call ReadEverything
+
+	QueryPortOpen
+	if "$(_G_RESULT)" EQ "TRUE"
+		ClosePort
+
+	Assign f_LoggedIn "FALSE"
+
+	Sleep 1000
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ResetVariables
+;   This label is called when we need to reset any variables
+:ResetVariables
+
+	Assign f_GotReplyString "FALSE"
+	Assign f_GotError "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	Call ResetVariables
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Exit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+	Call ResetVariables
+
+Exit
+; ************************************************************************

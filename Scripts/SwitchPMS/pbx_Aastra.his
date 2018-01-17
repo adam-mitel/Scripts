@@ -1,0 +1,677 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an Ascom/Aastra
+;  Ascotel 2060/2065 PABX with Hospitality enabled.
+;
+;  Written against Ascom Ascotel Hotel Integration Developers Guide
+;  Version 2.0 from March 2002.
+;
+;                                                            pjh-20070730
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define WorkVal				// Temporary working value
+
+define ReceivedRec			// Record we are receiving/have received.
+define SendRec				// Record to send.
+
+define fLoggedIn			// Flag to store our current logged in status.
+
+define LoginState			// Used while logging in to determine current
+							// PBX mode.
+
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+; ************************************************************************
+:INIT
+	Assign fLoggedIn "FALSE"
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;   Called when the IP socket is connected.
+; ************************************************************************
+:PORT_OPENED
+
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+; ************************************************************************
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+; ************************************************************************
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+; ************************************************************************
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+; ************************************************************************
+:MessageWaiting
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+; ************************************************************************
+:WakeupCall
+
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+		
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WK_SET
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto WK_CLEAR
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WK_CLEAR
+
+	Goto WK_DONE
+	
+:WK_SET
+	Assign SendRec "h6	$(_EV_EXTNNUMBER)	1	<_EV_WKTIME:TIME:4:HHMM><#13>"
+	Call SendCommand
+
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting wakeup call for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto WK_DONE
+		
+	Goto WK_DONE
+
+:WK_CLEAR
+	Assign SendRec "h6	$(_EV_EXTNNUMBER)	0	<_EV_WKTIME:TIME:4:HHMM><#13>"
+	Call SendCommand
+
+	if "$(fError)" EQ "TRUE"
+		Echo "Error clearing wakeup call for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto WK_DONE
+		
+	Goto WK_DONE
+
+:WK_DONE
+
+	Call Logout
+	
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+; ************************************************************************
+:Checkin
+
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+
+	// Send Checkin
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	1<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error checking in extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto Checkin_Done
+
+	// Send Set Name
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting name for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto Checkin_Done
+
+	// Send Set Exchange Access
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	1<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting exchange access for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto Checkin_Done
+
+:Checkin_Done
+
+	Call Logout
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+; ************************************************************************
+:Checkout
+	
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+
+	// Send Checkout
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error checking out extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto Checkout_Done
+		
+	// Send Set Name
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	VACANT<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting name for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+	
+:Checkout_Done
+
+	Call Logout
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+; ************************************************************************
+:ClassOfService
+
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+	
+	Assign WorkVal "1"
+	If "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "0"
+
+	// Send Set Exchange Access
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	$(WorkVal)<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting exchange access for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto COS_Done
+		
+:COS_Done
+
+	Call Logout
+	
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+; ************************************************************************
+:RoomUpdate
+
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+
+	// Send Set Name
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting name for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+
+	Call Logout
+	
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+; ************************************************************************
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+; ************************************************************************
+:RoomTransfer
+
+	Call Login
+	
+	if "$(fLoggedIn)" NE TRUE
+		Goto HandleFailAndExit
+
+	// Send Checkout
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error checking out extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto TRCheckout_Done
+		
+	// Send Set Name
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	VACANT<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting name for extn $(_EV_EXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+	
+:TRCheckout_Done
+
+	// Send Checkin
+	Assign SendRec "h3	$(_EV_TRDESTEXTNNUMBER)	1<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error checking in extn $(_EV_TRDESTEXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto TRCheckin_Done
+
+	// Send Set Name
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting name for extn $(_EV_TRDESTEXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto TRCheckin_Done
+
+	// Send Set Exchange Access
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	1<#13>"
+	Call SendCommand
+	
+	if "$(fError)" EQ "TRUE"
+		Echo "Error setting exchange access for extn $(_EV_TRDESTEXTNNUMBER)"
+	if "$(fError)" EQ "TRUE"
+		Goto Checkin_Done
+
+:TRCheckin_Done
+	
+	Call Logout
+	
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+; ************************************************************************
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+; ************************************************************************
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+; ************************************************************************
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+; ************************************************************************
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;    Log in to the PBX.
+; ************************************************************************
+:Login
+
+	OpenPort
+
+:Retry_Login
+
+	// Send a Carriage Return.
+	Call SendCR
+
+:Login_GetLoginState
+
+	// Get the response.
+	Call GetLoginState
+	
+	// Check LoginState
+	If "$(LoginState)" EQ "HOTEL"
+		Goto SendLoginCommand
+
+	If "$(LoginState)" EQ "LOCAL"
+		Goto Sendi3ModeCommand
+
+	If "$(LoginState)" EQ "PROGRAMMING"
+		Goto SendLocalCommand
+
+	If "$(LoginState)" EQ "BUSY"
+		Sleep 1000
+	If "$(LoginState)" EQ "BUSY"
+		Goto Retry_Login
+
+:SendLocalCommand
+	Echo Tx: Ctrl-Z
+	Send <#26>
+	
+	Echo Tx: Ctrl-A
+	Send <#1>
+
+	Goto Login_GetLoginState
+	
+:Sendi3ModeCommand
+
+	Assign SendRec "i3mode<#13><#10>"
+	Call SendRecord
+	
+	Goto Login_GetLoginState
+	
+:SendLoginCommand
+
+	Assign SendRec "<#13>h"
+	Call SendCommand
+	
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Logout
+;    Log out of the PBX.
+; ************************************************************************
+:Logout
+	// Set up Logout command
+	Assign SendRec "h<#13>"
+	Call SendRecord
+	
+	Assign fLoggedIn "FALSE"
+	
+	ClosePort
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+	Assign ReceivedRec ""
+	
+	StartWaitTimer 5
+	
+:CI_Read
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto CI_Done
+	
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Timeout - Rx: $(ReceivedRec)
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto CI_Done
+
+	Goto CI_Read
+	
+:CI_Done
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GetLoginState
+;    Reads lines from the PBX and checks for current state of PBX.
+; ************************************************************************
+:GetLoginState
+
+	Assign LoginState ""
+	
+:ReadNextLine
+	Assign ReceivedRec ""
+
+:ReadLine
+	ReadFromPort 1
+	
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	// If we got an LF, echo to screen and check login reply.
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Call CheckLoginState
+	
+	// Check if we've got a Login reply.
+	if "$(LoginState)" NE ""
+		Goto GotLoginState
+
+	// If we got an LF, start a new line.
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto ReadNextLine
+
+Goto ReadLine
+
+:GotLoginState
+Return
+
+:CheckLoginState
+	
+	// Check for e0 - Hotel Mode.
+	ContainsStr "e0" "$(ReceivedRec)" "TRUE"
+	
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign LoginState "HOTEL"
+	
+	// Check for PASSWORD? - Programming Mode.
+	ContainsStr "PASSWORD?" "$(ReceivedRec)" "TRUE"
+	
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign LoginState "PROGRAMMING"
+
+	// Check for LOCAL> - Local Mode.
+	ContainsStr "LOCAL>" "$(ReceivedRec)" "TRUE"
+
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign LoginState "LOCAL"
+
+	// Check for BUSY - Busy.
+	ContainsStr "BUSY" "$(ReceivedRec)" "TRUE"
+
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign LoginState "BUSY"
+		
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  SendRecord
+;    Send contents of SendRec and echo to screen.
+; ************************************************************************
+:SendRecord
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendCommand
+;    Send contents of SendRec, echos to screen and waits for a reply 
+;    message.
+; ************************************************************************
+:SendCommand
+	Assign fError "FALSE"
+	
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+	
+:GetCommandReply
+	Assign ReceivedRec ""
+	
+:ReadCommandReply
+	ReadFromPort 1
+	
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReadCommandReply
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto GotCommandReply
+
+	Goto ReadCommandReply
+	
+:GotCommandReply
+	// Check for an Error.
+	if "<ReceivedRec:TEXT:1:LJ,SP>" EQ "e"
+		Assign fError "TRUE"
+		
+	if "<ReceivedRec:TEXT:4:LJ,SP>" EQ "BUSY"
+		Assign fError "TRUE"
+		
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendCR
+;    Send a Carriage Return.
+; ************************************************************************
+:SendCR
+	Echo Tx: <#13>
+	Send <#13>
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script 
+;    effectively ignoring the record.
+; ************************************************************************
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;    This will flag that the event is processed and exit the script.
+; ************************************************************************
+:HandleOKAndExit
+  FLAGPROCESSED OK
+EXIT
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleFailAndExit
+;    This will flag that the event failed to processed and exit the 
+;    script.
+; ************************************************************************
+:HandleFailAndExit
+  FLAGPROCESSED FAIL
+EXIT
+; ************************************************************************

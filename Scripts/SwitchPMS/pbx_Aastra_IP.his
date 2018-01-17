@@ -1,0 +1,636 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an
+;  Aastra IntelliGate.
+;
+;                                                              AU-20110824
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define SendRec
+define WorkVal
+;
+define f_Error
+define f_LoggedIn
+;
+define s_Username
+define s_Password
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+	Assign s_Username "tiger"
+	Assign s_Password "tiger1234"
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	Assign f_Error "FALSE"
+	Assign f_LoggedIn "FALSE"
+
+	Call Login
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WakeupCall_Set
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto WakeupCall_Clear
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WakeupCall_Clear
+
+	Goto HandleOKAndExit	
+
+:WakeupCall_Set
+
+	Assign SendRec "h6	$(_EV_EXTNNUMBER)	1	<_EV_WKTIME:TIME:4:HHMM><#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Wakeup on $(_EV_EXTNNUMBER).
+
+	Goto HandleOKAndExit
+
+:WakeupCall_Clear
+
+	Assign SendRec "h6	$(_EV_EXTNNUMBER)	0	<_EV_WKTIME:TIME:4:HHMM><#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error clearing Wakeup on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	1<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting $(_EV_EXTNNUMBER) to Checked In.
+
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting name on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	1<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Exchange Access (COS) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting $(_EV_EXTNNUMBER) to Checked Out.
+
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	VACANT<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting name on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Exchange Access (COS) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign WorkVal "1"
+	If "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "0"
+
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	$(WorkVal)<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Exchange Access (COS) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting name on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign SendRec "h3	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting $(_EV_EXTNNUMBER) to Checked In.
+
+	Assign SendRec "h4	$(_EV_EXTNNUMBER)	VACANT<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting name on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "h5	$(_EV_EXTNNUMBER)	0<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Exchange Access (COS) on $(_EV_EXTNNUMBER).
+
+	Assign SendRec "h3	$(_EV_TRDESTEXTNNUMBER)	1<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting $(_EV_TRDESTEXTNNUMBER) to Checked In.
+
+	Assign SendRec "h4	$(_EV_TRDESTEXTNNUMBER)	<_EV_NAMEDISPLAY:TEXT:17:><#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting name on $(_EV_TRDESTEXTNNUMBER).
+
+	// Send Set Exchange Access
+	Assign SendRec "h5	$(_EV_TRDESTEXTNNUMBER)	1<#13>"
+	Call SendRecord
+
+	if "$(f_Error)" EQ "TRUE"
+		Echo Db: Error setting Exchange Access (COS) on $(_EV_TRDESTEXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	Call Logout
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	Assign ReceivedRec ""
+
+	StartWaitTimer 5
+
+:CheckIncoming_Read
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto CheckIncoming_Done
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Db: Timeout waiting for <#10>
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Rx: $(ReceivedRec)
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto CheckIncoming_Done
+
+	Goto CheckIncoming_Read
+
+:CheckIncoming_Done
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;    This label is executed when we need to Login to the PBX.
+:Login
+
+	OpenPort
+
+	Assign ReceivedRec ""
+	StartWaitTimer 5
+
+:Login_WaitForUsername
+
+	Call Login_ReadRecord
+
+	ContainsSTR "Username" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto Login_Fail
+
+	Send $(s_Username)
+	Echo Tx: $(Username)
+
+:Login_WaitForPassword
+
+	Call Login_ReadRecord
+
+	ContainsSTR "Password" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto Login_Fail
+
+	Send $(s_Password)
+	Echo Tx: ********
+
+:Login_WaitForConfirmation
+
+	Call Login_ReadRecord
+
+	ContainsSTR "Password" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto Login_Fail
+
+	Assign f_LoggedIn "TRUE"
+
+	Return
+
+:Login_ReadRecord
+
+	Assign ReceivedRec ""
+	StartWaitTimer 5
+
+:Login_ReadNextChar
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Return
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Db: Timeout waiting for <#10>
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Rx: $(ReceivedRec)
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Return
+
+	Goto Login_ReadNextChar
+
+:Login_Fail
+
+	Echo Db: Unable to log in to the PBX - Retrying in 30 seconds.
+	ClosePort
+	Sleep 30000
+
+Goto Login
+; ************************************************************************
+
+
+; ************************************************************************
+;  Logout
+;    This label is executed when we need to Logout of the PBX.
+:Logout
+
+	Assign SendRec "h<#13>"
+	Call SendRecord
+	
+	Assign f_LoggedIn "FALSE"
+	
+	ClosePort
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+
+	Assign ReceivedRec ""
+	StartWaitTimer 3
+
+:SendRecord_WaitForReply
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord_GotReply
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto SendRecord_GotReply
+
+	Goto SendRecord_WaitForReply
+
+:SendRecord_GotReply
+
+	if "<ReceivedRec:TEXT:1:LJ,SP>" EQ "e"
+		Assign f_Error "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

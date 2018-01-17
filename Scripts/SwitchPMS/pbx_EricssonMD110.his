@@ -1,0 +1,610 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an
+;  Ericsson MD110 PABX.
+;
+;                                                              AU-20120524
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+;
+define s_BarCAT
+define s_UnbarCAT
+define s_Username
+define s_Password
+;
+define g_GuestName
+;
+define f_LoggedIn
+define f_TimerExpired
+define f_WaitString
+define f_GotWaitString
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Set the Bar CAT number
+	Assign s_BarCAT "1"
+
+//	OPT: Set the Unbar CAT number
+	Assign s_BarCAT "6"
+
+//	OPT: Set the Username to Login to the MD110
+	Assign s_Username "TIGER"
+
+//	OPT: Set the Password to Login to the MD110
+	Assign s_Password "TIGER"
+
+	Assign f_LoggedIn "FALSE"
+
+	OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	Call Login
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	ContainsSTR "VACANT" "$(_EV_GUESTNAME)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto IgnoreRecord
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Send EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_UnbarCAT);<#13>
+	Echo Tx: EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_UnbarCAT);
+	Call TakeWhatsComing
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+
+	Send NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAMDB=YES,NAME2="<g_GuestName:TEXT:15:LJ,SP,AN>";<#13>
+	Echo Tx: NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAMDB=YES,NAME2="<g_GuestName:TEXT:15:LJ,SP,AN>";
+
+	Call TakeWhatsComing
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	ContainsSTR "VACANT" "$(_EV_GUESTNAME)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto IgnoreRecord
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Send EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_BarCAT);<#13>
+	Echo Tx: EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_BarCAT);
+	Call TakeWhatsComing
+
+	Send NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="VACANT $(_EV_ROOMNUMBER)";<#13>
+	Echo Tx: NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="VACANT $(_EV_ROOMNUMBER)";
+
+	Call TakeWhatsComing
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign WorkVal "$(s_BarCAT)"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCAT)"
+
+	Send EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(WorkVal);<#13>
+	Echo Tx: EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(WorkVal);
+	Call TakeWhatsComing
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+
+	Send NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="<g_GuestName:TEXT:15:LJ,SP,AN>";<#13>
+	Echo Tx: NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="<g_GuestName:TEXT:15:LJ,SP,AN>";
+	Call TakeWhatsComing
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckout
+
+	Send EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_BarCAT);<#13>
+	Echo Tx: EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(s_BarCAT);
+	Call TakeWhatsComing
+
+	Send NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="VACANT $(_EV_ROOMNUMBER)";<#13>
+	Echo Tx: NIINI:DIR=$(_EV_EXTNNUMBER),NAME1=" ",NAME2="VACANT $(_EV_ROOMNUMBER)";
+	Call TakeWhatsComing
+
+:RoomTransfer_SkipCheckout
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckin
+
+	Assign WorkVal "$(s_BarCAT)"
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCAT)"
+
+	Send EXCAC:DIR=$(_EV_TRDESTEXTNNUMBER),CAT=$(WorkVal);<#13>
+	Echo Tx: EXCAC:DIR=$(_EV_TRDESTEXTNNUMBER),CAT=$(WorkVal);
+	Call TakeWhatsComing
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+
+	Send NIINI:DIR=$(_EV_TRDESTEXTNNUMBER),NAME1=" ",NAME2="<g_GuestName:TEXT:15:LJ,SP,AN>";<#13>
+	Echo Tx: NIINI:DIR=$(_EV_TRDESTEXTNNUMBER),NAME1=" ",NAME2="$(g_GuestName)";
+	Call TakeWhatsComing
+
+:RoomTransfer_SkipCheckin
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_DDIACTION)" EQ "SET"
+		Goto DDI_Set
+	if "$(_EV_DDIACTION)" EQ "CLEAR"
+		Goto DDI_Clear
+
+	Echo If: Unsupported _EV_DDIACTION: "$(_EV_DDIACTION)"
+	Goto IgnoreRecord
+
+:DDI_Set
+
+	Send NUTRI:CNVTYP=0,NUMTYP=1,TRC=2,ENTRY=$(_EV_DDI),PRE=$(_EV_EXTNNUMBER);<#13>
+	Echo Tx: NUTRI:CNVTYP=0,NUMTYP=1,TRC=2,ENTRY=$(_EV_DDI),PRE=$(_EV_EXTNNUMBER);
+	Call TakeWhatsComing
+
+	Goto HandleOKAndExit
+
+:DDI_Clear
+
+	Send NUTRE:CNVTYP=0,NUMTYP=1,ENTRY=$(_EV_DDI);<#13>
+	Echo Tx: NUTRE:CNVTYP=0,NUMTYP=1,ENTRY=$(_EV_DDI);
+	Call TakeWhatsComing
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+Goto Logout
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComing
+;   This label is called when we have need to receive the reply to
+;   a record we have sent
+:TakeWhatsComing
+
+	Assign f_TimerExpired "FALSE"
+	Assign f_GotWaitString "FALSE"
+
+:TakeWhatsComing_GetNextLine
+
+	if "$(f_TimerExpired)" EQ "TRUE"
+		Echo If: WaitTimer Expired
+	if "$(f_TimerExpired)" EQ "TRUE"
+		Echo Rx: $(ReceivedRec)
+	if "$(f_TimerExpired)" EQ "TRUE"
+		Return
+
+	Assign ReceivedRec ""
+	StartWaitTimer 30
+
+:TakeWhatsComing_Read
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Call TakeWhatsComing_TestTimer
+	if "$(_PORTCHARS)" EQ ""
+		Goto TakeWhatsComing_Read
+
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto TakeWhatsComing_SkipAdd
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto TakeWhatsComing_SkipAdd
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:TakeWhatsComing_SkipAdd
+
+	if "$(f_GotWaitString)" EQ "TRUE"
+		Goto TakeWhatsComing_SkipCheckString
+
+	ContainsStr "$(f_WaitString)" "$(ReceivedRec)" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotWaitString "TRUE"
+
+:TakeWhatsComing_SkipCheckString
+
+	if "$(_PORTCHARS)" EQ "<#28>"
+		Call TakeWhatsComing_EchoLine
+	if "$(_PORTCHARS)" EQ "<#28>"
+		Return
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Call TakeWhatsComing_EchoLine
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto TakeWhatsComing_GetNextLine
+
+	Goto TakeWhatsComing_Read
+
+:TakeWhatsComing_EchoLine
+
+	if "$(ReceivedRec)" NE ""
+		Echo Rx: $(ReceivedRec)
+
+	Return
+
+:TakeWhatsComing_TestTimer
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Assign f_TimerExpired "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Login
+;   This label is executed by the program when we need to Login to the PBX
+:Login
+
+	Send S
+	Sleep 100
+	Send S
+	Sleep 100
+	Send S
+	Sleep 100
+	Send S
+	Sleep 100
+	Send ;
+	Sleep 100
+	Send <#13>
+
+	Echo Tx: SSSS;
+	Assign f_WaitString "ENTER"
+	Call TakeWhatsComing
+
+	if "$(f_GotWaitString)" NE "TRUE"
+		Goto Login
+
+	Send $(s_Username)<#13>
+	Echo Tx: $(s_Username)
+	Call TakeWhatsComing
+
+	Send $(s_Password);<#13>
+	Echo Tx: $(s_Password);
+	Call TakeWhatsComing
+
+	Assign f_LoggedIn "TRUE"
+	Assign f_WaitString "NEVER-GOING-TO-HAPPEN"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  Logout
+;   This label is executed by the program when we need to Logout the PBX
+:Logout
+
+	Send <#24>
+	Echo Tx: <#24>
+	Call TakeWhatsComing
+
+	Send O;<#13>
+	Echo Tx: O;
+	Call TakeWhatsComing
+
+	Assign f_LoggedIn "FALSE"
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

@@ -1,0 +1,672 @@
+; Coded For: 4.10.0.5
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an Aastra MXOne
+;  PBX via Skshell session.
+;
+;                                                               BF 10-2011
+;
+; ************************************************************************
+;             Copyright © 2000, Tiger Communications plc
+; ************************************************************************
+;
+; *** Variable definitions
+define SendRec                // The record we build to input cmd to the PBX
+define ReceivedRec            // The responses record we receive from the cmd line
+define WorkVal
+define WorkVal2                
+define src_GuestName          
+define src_AllowCalls         
+
+define f_SessionActive
+
+define s_Username
+define s_Password
+
+; ************************************************************************
+;  INIT
+;   Executed before the main processing gets under way to allow variables
+;   to be initialised.
+:INIT
+
+	; Default some variables. DON'T CHANGE THESE!
+	assign ReceivedRec ""
+	assign f_SessionActive "FALSE"
+
+	assign s_Username "eri_sn_admin"
+	assign s_Password "Ericsson"
+
+	Call Login
+
+exit
+; ************************************************************************
+
+; ************************************************************************
+:Login
+
+	Echo Opening Skshell Session...
+	OpenPort
+
+Return
+
+	Send su<#13><#10>
+	Echo Tx: su
+
+	Call TakeWhatsComing
+
+	Echo Er: Got no "Login as" prompt: $(ReceivedRec)
+
+	Return
+
+:Login_GotLoginPrompt
+
+	Send $(s_Username)<#13><#10>
+	Echo Tx: $(s_Username)
+
+	Call TakeWhatsComing
+
+	Echo Er: Got no "Password" prompt: $(ReceivedRec)
+
+	Return
+
+:Login_GotPasswordPrompt
+
+	Send $(s_Password)
+	Echo Tx: $(s_Password)
+
+	Call TakeWhatsComing
+
+	Echo Er: Got no "Last login" prompt: $(ReceivedRec)
+
+	Return
+
+:Login_GotLastLogin
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:Logoff
+
+	Echo Closing Skshell Session...
+	ClosePort
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  CheckSessionStatus
+;    This label is executed to check on status of active sessions, 
+;        as server may instigate disconnect.
+
+:CheckSessionStatus
+        
+        QueryPortOpen
+        if "$(_G_RESULT)" NE "TRUE"
+               echo Skshell session is presently disconnected
+        if "$(_G_RESULT)" NE "TRUE"
+                Sleep 3000
+        if "$(_G_RESULT)" NE "TRUE"
+                Assign f_SessionActive "FALSE"
+
+return
+; ************************************************************************
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when a connection is established.
+:PORT_OPENED
+
+	echo >>> In PORT_OPENED
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWNp
+
+        echo >>> In Shutdown
+        call Logout
+ 
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+	Call CheckSessionStatus
+	if "$(f_SessionActive)" NE "TRUE"
+		Call Login
+
+	Assign WorkVal "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	ReplaceStr "$(WorkVal)" " " "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+	ReplaceStr "$(WorkVal)" "__" "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+
+
+	if "$(WorkVal)" EQ ""
+		Assign WorkVal "OCCUPIED"
+
+        Assign SendRec "/opt/eri_sn/bin/name -i -d $(_EV_EXTNNUMBER) --name1 <WorkVal:TEXT:20:> --number-type dir\\"
+        Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	Call TakeWhatsComing
+
+//	ContainsStr "ANALOG" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=7;\""
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+	
+//	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"KSCAC:DIR=$(_EV_EXTNNUMBER),CAT=1;\""
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Send $(SendRec)<#13><#10>
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Echo Tx: $(SendRec)
+
+//	ContainsStr "IP" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/extension -c -d $(_EV_EXTNNUMBER) --csp 7 "
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+	
+	Call TakeWhatsComing
+
+goto Finish
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+	Call CheckSessionStatus
+	if "$(f_SessionActive)" NE "TRUE"
+		Call Login
+
+
+	Assign SendRec "/opt/eri_sn/bin/name -i -d $(_EV_EXTNNUMBER) --name1 VACANT --number-type dir\\"
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	Call TakeWhatsComing
+
+//	ContainsStr "ANALOG" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=8;\""
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+//	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"KSCAC:DIR=$(_EV_EXTNNUMBER),CAT=8;\""
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Send $(SendRec)<#13><#10>
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Echo Tx: $(SendRec)
+
+//	ContainsStr "IP" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/extension -c -d $(_EV_EXTNNUMBER) --csp 8 "
+	if "$(_G_RESULT)" EQ "TRUE"
+	Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+	Call TakeWhatsComing
+
+goto Finish
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+	Call CheckSessionStatus
+	if "$(f_SessionActive)" NE "TRUE"
+		Call Login
+
+	Assign WorkVal "8"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "7"
+
+//  	ContainsStr "ANALOG" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//  	if "$(_G_RESULT)" EQ "TRUE"
+  		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(WorkVal);\""
+  	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+  	if "$(_G_RESULT)" EQ "TRUE"
+  		Echo Tx: $(SendRec)
+
+//	Assign SendRec "mdsh -c \"EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(WorkVal); \""
+//	Send $(SendRec)
+//	;<#13><#10>
+//      Echo Tx: $(SendRec)
+
+//  	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+// 	if "$(_G_RESULT)" EQ "TRUE"
+//  		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"KSCAC:DIR=$(_EV_EXTNNUMBER),CAT=$(WorkVal);\""
+//  	if "$(_G_RESULT)" EQ "TRUE"
+//  		Send $(SendRec)<#13><#10>
+//  	if "$(_G_RESULT)" EQ "TRUE"
+//  		Echo Tx: $(SendRec)
+  
+//  	ContainsStr "IP" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//  	if "$(_G_RESULT)" EQ "TRUE"
+  		Assign SendRec "/opt/eri_sn/bin/extension -c -d $(_EV_EXTNNUMBER) --csp $(WorkVal) "
+  	if "$(_G_RESULT)" EQ "TRUE"
+  		Send $(SendRec)
+  	if "$(_G_RESULT)" EQ "TRUE"
+  		Echo Tx: $(SendRec)
+
+
+goto Finish
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+	Call CheckSessionStatus
+	if "$(f_SessionActive)" NE "TRUE"
+		Call Login
+
+	IF "$(_EV_RUGUESTNAME)" EQ ""
+		Assign WorkVal "  "
+	if "$(_EV_RUGUESTNAME)" NE ""
+
+	Assign WorkVal "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	ReplaceStr "$(WorkVal)" " " "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+	ReplaceStr "$(WorkVal)" "__" "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+
+	Assign SendRec "/opt/eri_sn/bin/name -i -d $(_EV_EXTNNUMBER) --name1 <WorkVal:TEXT:20:> --number-type dir\\"		
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	Call TakeWhatsComing
+
+goto Finish
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+	Call CheckSessionStatus
+	if "$(f_SessionActive)" NE "TRUE"
+		Call Login
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckout
+
+	Assign SendRec "/opt/eri_sn/bin/name -i -d $(_EV_EXTNNUMBER) --name1 VACANT --number-type dir\\"
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	Call TakeWhatsComing
+
+//	ContainsStr "ANALOG" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"EXCAC:DIR=$(_EV_EXTNNUMBER),CAT=8;\""
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+//	ContainsStr "DIGITAL" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Assign SendRec "/opt/eri_sn/bin/mdsh -c \"KSCAC:DIR=$(_EV_EXTNNUMBER),CAT=8;\""
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Send $(SendRec)
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Echo Tx: $(SendRec)
+
+//	ContainsStr "IP" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/extension -c -d $(_EV_EXTNNUMBER) --csp 8 "
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+	Call TakeWhatsComing
+
+:RoomTransfer_SkipCheckout
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckin
+
+	Assign WorkVal "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	ReplaceStr "$(WorkVal)" " " "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+	ReplaceStr "$(WorkVal)" "__" "_" "TRUE" "FALSE"
+	Assign WorkVal "$(_G_RESULT)"
+
+	if "$(WorkVal)" EQ ""
+		Assign WorkVal "OCCUPIED"
+
+        Assign SendRec "/opt/eri_sn/bin/name -i -d $(_EV_TRDESTEXTNNUMBER) --name1 <WorkVal:TEXT:20:> --number-type dir\\"
+        Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	Call TakeWhatsComing
+
+//	ContainsStr "ANALOG" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/name/mdsh -c \"EXCAC:DIR=$(_EV_TRDESTEXTNNUMBER),CAT=7;\""
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+//	ContainsStr "DIGITAL" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Assign SendRec "/opt/eri_sn/bin/name/mdsh -c \"KSCAC:DIR=$(_EV_TRDESTEXTNNUMBER),CAT=7;\""
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Send $(SendRec)
+//	if "$(_G_RESULT)" EQ "TRUE"
+//		Echo Tx: $(SendRec)
+
+//	ContainsStr "IP" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+//	if "$(_G_RESULT)" EQ "TRUE"
+		Assign SendRec "/opt/eri_sn/bin/extension -c -d $(_EV_TRDESTEXTNNUMBER) --csp 8 "
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send $(SendRec)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: $(SendRec)
+
+	Call TakeWhatsComing
+
+:RoomTransfer_SkipCheckin
+
+goto Finish
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+:PeriodicCheck
+
+	Call Logoff
+
+	;Call Login
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+; Read a character
+;ReadFromPort 1
+
+; if it is an ENQ, show it and call ReceiveRecord
+;if "$(_PORTCHARS)" NE ""
+;	Echo Rx: $(_PORTCHARS)
+
+Exit
+; ******************************************************************************
+
+
+; ******************************************************************************
+;  HANDLEOK
+;    This will flag that the event is processed.
+
+:HANDLEOK
+  FLAGPROCESSED OK
+RETURN
+; ******************************************************************************
+
+
+; ******************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+
+
+; ******************************************************************************
+;  Finish
+;    This will end the script.
+:Finish
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+
+
+; ************************************************************************
+;  SENDENQ
+;   Sends an Enq (#5) character out of the port and echoes it to the
+;   communications display.
+
+:SENDENQ
+  Send <#5>
+  Echo Tx: <#5>
+RETURN
+; ************************************************************************
+
+
+; ************************************************************************
+;  SENDACK
+;   Sends an Ack (#6) character out of the port and echoes it to the
+;   communications display.
+
+:SENDACK
+  Send <#6>
+  Echo Tx: <#6>
+RETURN
+; ************************************************************************
+
+; ************************************************************************
+;  FLUSHINPUT
+;   Will read everything from the serial port until there is nothing
+;   more to read.
+
+:FLUSHINPUT
+
+; Read the first character
+ReadFromPort 1
+
+; if there isn't one, go to finish
+if "$(_PORTCHARS)" EQ ""
+	goto FLUSHINPUT_FINISHED
+
+; To get here, there was a character so we need to read the next.
+goto FLUSHINPUT
+
+:FLUSHINPUT_FINISHED
+
+RETURN
+; ************************************************************************
+
+; ************************************************************************
+;  TakeWhatsComing
+;    Continues to receive and echo lines that end in CR until a specific
+;	  line is received.
+; ************************************************************************
+:TakeWhatsComing
+
+	; Start a frekshell record
+	assign ReceivedRec ""
+
+	; Set up Timeout
+	StartWaitTimer 10
+
+:TakeWhatsComing_Read
+
+	; Read the next character
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto TakeWhatsComing_GotLine
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Goto TakeWhatsComing_GotLine
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	Goto TakeWhatsComing_Read
+
+:TakeWhatsComing_GotLine
+
+	if "$(ReceivedRec)" NE ""
+		Echo Rx: $(ReceivedRec)
+
+	ContainsStr "ogin as" "$(ReceivedRec)" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto Login_GotLoginPrompt
+
+	ContainsStr "assword" "$(ReceivedRec)" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto Login_GotPasswordPrompt
+
+	ContainsStr "ast login" "$(ReceivedRec)" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto Login_GotLastLogin
+
+;	ContainsStr "EXECUTED" "$(ReceivedRec)" "TRUE"
+;	if "$(_G_RESULT)" EQ "TRUE"
+;		echo SUCCESSFUL MESSAGE
+;	if "$(_G_RESULT)" NE "TRUE"
+;		echo FAILED MESSAGE
+
+Goto TakeWhatsComing
+; ************************************************************************

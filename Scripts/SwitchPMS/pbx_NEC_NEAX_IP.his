@@ -1,0 +1,1196 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.2
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an 
+;  NEC NEAX 7400 ICS telephone exchange.
+;
+;  Maid Status Codes from this PBX:
+;
+;  Code -  Spec Description (Tiger Description)
+;    1  -  Cleaning necessary (Vacant Dirty)
+;    2  -  Room is cleaned (Vacant Clean)
+;    3  -  Room is ready for reservation (Vacant Inspected?)
+;    4  -  Room out of service (?)
+;    5  -  Room needs repair (?)
+;    6  -  Room is repaired (?)
+;
+;  Protocol defined by document:
+;
+;    Title:      NEAX7400 ICS Model 120 PMS System Manual
+;    Revision:   Issue 1 (July, 1994)
+;
+;  Version 1.0                                                 pjh-170502
+;
+;  Modifications - AU - 10/11/2013
+;	* Modified incoming Room Status events to strip any * or # characters which
+;	  was causing our program to crash
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+
+; Configuration Variables
+
+define DoSMDRPassThru		// Should we passthru SMDR to Data Collection
+define EquipNo			// Equipment number of PMS.
+define LastSeqNo		// Highest value for the sequence number
+define DoMessageWaiting 	// Specify if we do Message Waiting
+define DoWakeups		// Specify if we do Wakeup Calls
+
+; Internal Variables
+
+define fLastSeqNoSent   // Stores the last sequence no we have sent.
+define SendRec			// Stores our record to send.
+define ReplyRec			// Stores our reply to send.
+define WorkVal			// Temporary working variable
+define RecType			// Stores Record Type
+define f_ReplyNo		// Stores reply number to send back.
+
+; Input variables
+
+define ReceivedRec		// Stores the received record.
+define inTextID			// Stores Text Identifier from incoming record.
+define inEquipNo		// Stores Equipment Number from incoming record.
+define inSeqNo			// Stores Sequence Number from incoming record.
+define inFeatureCode	// Stores Feature Code from incoming record.
+define inMsgCounter		// Stores Message Counter from incoming record.
+define inFunctionCode	// Stores Function Code from incoming record.
+define inStatus			// Stores Maid Status from incoming record.
+define inExtn			// Stores Extension number from incoming record.
+define inMaidID			// Stores Maid ID from incoming record.
+define inWakeupTime		// Stores Wakeup Time from incoming record.
+define inWakeupResult	// Stores Wakeup Result from incoming record.
+define inSMDR			// Stores SMDR record.
+
+; ************************************************************************
+;  INIT
+;   This part of the script is run once at the program start-up
+; ************************************************************************
+:INIT
+
+  // OPT: Set this to "TRUE" if we should pass SMDR records through to
+  //      data collection. This should only be set to "TRUE" if we are
+  //      not handling SMDR through a seperate port.
+  Assign DoSMDRPassThru "TRUE"
+
+  // OPT: Set this value to the Equipment number configured on the PBX
+  //      for the PMS. This is normally fixed to "0" so should not need
+  //      changing.
+  Assign EquipNo "0"
+  
+  // Set up our auto incrementing sequence number.
+  // OPT: If the PBX is configured for 2 digit sequence numbers, change
+  //      the line below to 99 rather than 199.
+  Assign LastSeqNo "199"
+  
+  CreateAutoIncNumber SeqNo 0 $(LastSeqNo) 0
+
+  // Specify if we do Message Waiting and Wakeups
+  // OPT: Options are "YES" and "NO"
+  Assign DoMessageWaiting "NO"
+  Assign DoWakeups "NO"
+  
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  Port_Opened
+;   The script is executed from this label when the IP connection has
+;   been established. This is where any initialisation/connection
+;   messages/procedures should be sent/executed.
+; ************************************************************************
+:PORT_OPENED
+
+  ; Send a blank record to find check connection status.
+  Assign SendRec ""
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  Echo WorkVal = '$(WorkVal)'
+  Echo LastSeqNo = '$(LastSeqNo)'
+
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+
+  Assign SendRec "<#2>1!L7007F  <#3>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+; ************************************************************************
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+; ************************************************************************
+:Checkin
+
+  // OPT: If for some, unlikely, reason we do not wish to send checkin
+  //      details to the PBX then uncomment the following line
+  ;Goto IgnoreRecord
+  
+  ; Create the record.
+  Assign SendRec "<#2>1!L56461<_EV_EXTNNUMBER:TEXT:6:LJ,SP>      10 0<_EV_CILANGCODE:TEXT:1:LJ,ZP><_EV_NAMEDISPLAY:TEXT:16:AN,LJ,SP>        <#3>"
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+; ************************************************************************
+:Checkout
+
+  // OPT: If for some, unlikely, reason we do not wish to send checkout
+  //      details to the PBX then uncomment the following line
+  ;Goto IgnoreRecord
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L56142<_EV_EXTNNUMBER:TEXT:6:LJ,SP>010<#3>"
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+; ************************************************************************
+:ClassOfService
+
+  // OPT: If for some, unlikely, reason we do not wish to send class of
+  //      service changes to the PBX then uncomment the following line
+  ;Goto IgnoreRecord
+
+  ; Work out the Restriction Level.
+  if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+    Assign WorkVal "0"
+  if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+    Assign WorkVal "1"
+  
+  ; Create the record.
+  Assign SendRec "<#2>1!L15141<_EV_EXTNNUMBER:TEXT:6:LJ,SP><WorkVal:TEXT:1:LJ,ZP>  <#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+; ************************************************************************
+:RoomUpdate
+
+  // OPT: If for some, unlikely, reason we do not wish to send room
+  //      updates to the PBX then uncomment the following line
+  ;Goto IgnoreRecord
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L61461<_EV_EXTNNUMBER:TEXT:6:LJ,SP>      10 0<_EV_RULANGCODE:TEXT:1:LJ,ZP><_EV_NAMEDISPLAY:TEXT:16:AN,LJ,SP>        <#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+; ************************************************************************
+:RoomTransfer
+
+  // OPT: If for some, unlikely, reason we do not wish to room transfers
+  //      to the PBX then uncomment the following line
+  ;Goto IgnoreRecord
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L56236<_EV_EXTNNUMBER:TEXT:6:LJ,SP>01 <_EV_TRDESTEXTNNUMBER:TEXT:6:LJ,SP>100<#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+; ************************************************************************
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+; ************************************************************************
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+; ************************************************************************
+:MessageWaiting
+
+  if "$(DoMessageWaiting)" NE "YES"
+  	goto IgnoreRecord
+
+  ; Default to 0 for mw light off
+  assign WorkVal "0"
+
+  ; set it to 1 if it is an mw light on
+  if "$(_EV_MWSTATE)" EQ "TRUE"
+    assign WorkVal "1"
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L53151<_EV_EXTNNUMBER:TEXT:6:LJ,SP>$(WorkVal)   <#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+; ************************************************************************
+:WakeupCall
+
+  if "$(DoWakeups)" NE "YES"
+  	goto IgnoreRecord
+
+  ; Check the action and perform the relevant command.
+  if "$(_EV_WKACTION)" EQ "CLEAR"
+    goto WakeupCallClear
+  if "$(_EV_WKACTION)" EQ "CLEARALL"
+    goto WakeupCallClear
+  if "$(_EV_WKACTION)" EQ "SET"
+    goto WakeupCallSet
+
+  ; We haven't catered for this event so we'll exit.
+  Goto WakeupCallDone
+  
+:WakeupCallClear
+  ; We should be clearing a wakeup call
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L19165<_EV_EXTNNUMBER:TEXT:6:LJ,SP>    5<#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+  ; We're done.
+  goto WakeupCallDone
+  
+:WakeupCallSet
+  ; We should be setting a wakeup call
+  
+  ; Create the record.
+  Assign SendRec "<#2>1!L19164<_EV_EXTNNUMBER:TEXT:6:LJ,SP><_EV_WKTIME:TIME:4:HHMM>4<#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+:WakeupCallDone
+
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+; ************************************************************************
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+; ************************************************************************
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+; ************************************************************************
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+; ************************************************************************
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+; ************************************************************************
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  PeriodicCheck
+;   Execution is periodically carried out from here by the program to
+;   handle periodic events.
+; ************************************************************************
+:PeriodicCheck
+
+  ; Send a status enquiry
+  Assign SendRec "<#2>1!L7007F  <#3>"
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the record.
+  Call SendRecord
+  
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  CheckIncoming
+;   Execution is periodically carried out from here by the program to
+;   check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+  ; Read a character
+  ReadFromPort 1
+  
+  If "$(_PORTCHARS)" EQ ""
+    Goto NothingToReceive
+
+  ; If it's a 2 then we need to receive a record.
+  If "$(_PORTCHARS)" EQ "2"
+    Assign ReceivedRec "2"
+  If "$(_PORTCHARS)" EQ "2"
+    Goto ReceiveRecord
+	
+  ; If it's a 6 then we need to receive a Connection Release Message.
+  If "$(_PORTCHARS)" EQ "6"
+    Assign ReceivedRec "6"
+  If "$(_PORTCHARS)" EQ "6"
+    Goto ReceiveConnectionRelease
+
+  ; Otherwise just echo it and exit.
+  Echo Rx: $(_PORTCHARS)
+
+:NothingToReceive
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveConnectionRelease
+;   The script reaches this point when we receive a "6" character whilst
+;   idle. This is a connection release message.
+;   (ReceivedRec will contain "6" )
+; ************************************************************************
+:ReceiveConnectionRelease
+
+  ; Read 4 characters.
+  ReadFromPort 4 2
+  
+  ; If we didn't get them, loop back.
+  if "$(_PORTCHARS)" EQ ""
+	Goto ReceiveConnectionRelease
+
+  ; Add the characters to ReceivedRec.
+  Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+  
+  ; We've received a complete enquiry sequence so echo it to comms 
+  ; display.
+  Echo Rx: $(ReceivedRec)
+
+  ; We don't need to do anything just drop the connection.
+  
+  ; Tell the user what's happening
+  Echo If: Received connection release, disconnecting.
+  
+  ; Disconnect and start the reconnection process.
+  ClosePort
+  
+  Sleep 1000
+  
+  OpenPort
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveRecord
+;   Execution is sent here when we have received a "2" from the PBX. This
+;   signals that we should be receiving a record from the PBX.
+;   (ReceivedRec will contain "2")
+; ************************************************************************
+:ReceiveRecord
+
+StartWaitTimer 2
+
+; Loop around until we get an STX or the timer expires.
+:RR_WaitForSTX
+
+  ReadFromPort 1
+  
+  if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+    Goto RR_TimeoutWaitingForSTX
+
+  if "$(_PORTCHARS)" NE ""
+    Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	
+  if "$(_PORTCHARS)" EQ "<#2>"
+    Goto RR_GotSTX
+
+Goto RR_WaitForSTX
+	
+:RR_GotSTX
+
+  ; Read the next 3 characters from the port.. These should be the
+  ; System Address, Unit Address and Entry Index
+  ReadFromPort 3 2
+  
+  ; If it's not blank then add it to the record
+  if "$(_PORTCHARS)" NE ""
+    assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+  ; If it is blank then go back and read again.
+  if "$(_PORTCHARS)" EQ ""
+    Goto RR_GotSTX
+
+:ReadFeatureCode
+  
+  ; Read the next 2 characters from the port.. This should be the 
+  ; feature code.
+  ReadFromPort 2 2
+  
+  ; If it's not blank then add it to the record
+  if "$(_PORTCHARS)" NE ""
+    assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+  if "($_PORTCHARS)" NE ""
+    assign inFeatureCode "$(_PORTCHARS)"
+
+:ReadMessageCount
+
+  ; Read the next 2 characters from the port.. This should be the 
+  ; message counter.
+  ReadFromPort 2 2
+  
+  ; If it's not blank then add it to the record
+  if "$(_PORTCHARS)" NE ""
+    assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+  if "($_PORTCHARS)" NE ""
+    assign inMsgCounter "$(_PORTCHARS)"
+
+:ReadFunctionCode
+
+  ; Read the next 2 characters from the port.. This should be the 
+  ; message counter.
+  ReadFromPort 1 1
+  
+  ; If it's not blank then add it to the record
+  if "$(_PORTCHARS)" NE ""
+    assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+  if "($_PORTCHARS)" NE ""
+    assign inFunctionCode "$(_PORTCHARS)"
+
+  ; Set up a wait timer so we can timeout if we don't get the rest of the
+  ; record
+  StartWaitTimer 10
+
+:ContinueReceiving
+
+  ; Read from port.
+  ReadFromPort 1
+  
+  if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+    goto TimeoutReceiving
+
+  ; If we have received a character then add it to our record.
+  If "$(_PORTCHARS)" NE ""
+    Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+  ; If we have an ETX we should move onto processing the message.
+  If "$(_PORTCHARS)" EQ "<#3>"    
+    goto ReadFinished
+
+  ; Keep on reading.
+  goto ContinueReceiving
+
+:TimeoutReceiving
+
+  ; We have timed out receiving part way through a record. We should junk 
+  ; what we have and send nothing, the PBX will send ENQ.
+  Echo Er: Timed out waiting for record.
+  Echo Er: Received '$(ReceivedRec)'
+  
+  ; Go back to idle state.
+  Exit
+  
+:ReadFinished
+
+  ; By this point we have a complete record, so we need to process it
+  ; depending on the Feature Code.
+  If "$(inFeatureCode)" EQ "11"
+    Call MAIDSTATUS_GUESTROOM
+  If "$(inFeatureCode)" EQ "12"
+    Call MAIDSTATUS_PREDEFINED
+  If "$(inFeatureCode)" EQ "13"
+    Call MW_RECORD
+  If "$(inFeatureCode)" EQ "14"
+    Call SMDR_RECORD
+  If "$(inFeatureCode)" EQ "54"
+    Call SMDR_RECORD
+  If "$(inFeatureCode)" EQ "19"
+    Call WAKEUP_RECORD
+  If "$(inFeatureCode)" EQ "70"
+    Call STATUS_RECORD
+
+  ; Echo record to screen
+  Echo Rx: $(ReceivedRec)
+
+  ; We should now have a RecType set, if not it's not a record we're 
+  ; interested in.
+  Echo Rectype = "$(RecType)"
+  
+  If "$(RecType)" EQ ""
+    Goto SkipProcessIncoming
+
+  ; We have a valid record so let's parse it.
+  Assign _G_IN_RECORD "$(ReceivedRec)"
+  ParseInRecord
+  
+  ; If we encountered an error then report it.
+  If "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+    Call ReceiveError
+
+  ; Prepare a reply to send back
+;  if "$(inSeqNo)" NE ""
+;    Assign f_ReplyNo "0"
+;  if "$(inSeqNo)" EQ ""
+;    Assign f_ReplyNo "2"
+	
+;  if "$(LastSeqNo)" EQ "99"
+;    Assign ReplyRec "4$(EquipNo)$(inSeqNo)$(f_ReplyNo)"
+;  if "$(LastSeqNo)" NE "99"
+;    Assign ReplyRec "4$(EquipNo)$(inSeqNo)$(f_ReplyNo)"
+
+  ; Send our reply.
+;  Echo Tx: $(ReplyRec)
+;  Send $(ReplyRec)
+  
+  ; Handle the record.
+  if "$(RecType)" EQ "RS"
+    Call HandleMaidStatus
+  if "$(RecType)" EQ "MW"
+    Call HandleMessageWaiting
+  if "$(RecType)" EQ "SMDR"
+    Call HandleSMDR
+  if "$(RecType)" EQ "WK"
+    Call HandleWakeup
+  if "$(RecType)" EQ "ST"
+    Call HandleStatus
+        
+:SkipProcessIncoming
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when we timeout waiting for an STX while reading the record.
+; ************************************************************************
+:RR_TimeoutWaitingForSTX
+  Echo Er: Timeout waiting for STX while reading record.
+  Echo Er: Received '$(ReceivedRec)'
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when an error is found in the formatting of the record.
+; ************************************************************************
+:ReceiveError
+  Echo Er: Error with Received Record - Record ignored
+  Echo Er: Received '$(ReceivedRec)'
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  MAIDSTATUS_GUESTROOM
+;   Set up for receiving a Maid Status event originating from a guest
+;   room.
+; ************************************************************************
+:MAIDSTATUS_GUESTROOM
+
+  ; Assign the record type.
+  Assign RecType "RS"
+	
+  ; Assign the record format.
+  if "$(LastSeqNo)" EQ "99"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,ZP><inSeqNo:TEXT:2:RJ,ZP><#2>1!L1117<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inMaidID:TEXT:2:LJ,ZP>    <#3>"
+  if "$(LastSeqNo)" EQ "199"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:1:RJ,ZP><inSeqNo:TEXT:3:RJ,ZP><#2>1!L1117<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inMaidID:TEXT:2:LJ,ZP>    <#3>"
+
+Return	
+; ************************************************************************
+
+; ************************************************************************
+;  MAIDSTATUS_PREDEFINED
+;   Set up for receiving a Maid Status event originating from a front
+;   desk console.
+; ************************************************************************
+:MAIDSTATUS_PREDEFINED
+
+  ; Assign the record type.
+  Assign RecType "RS"
+	
+  ; Assign the record format.
+  if "$(LastSeqNo)" EQ "99"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><#2>1!L1217<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inMaidID:TEXT:2:LJ,ZP>    <#3>"
+  if "$(LastSeqNo)" EQ "199"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:1:RJ,SP><inSeqNo:TEXT:3:RJ,ZP><#2>1!L1217<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inMaidID:TEXT:2:LJ,ZP>    <#3>"
+
+Return	
+; ************************************************************************
+
+; ************************************************************************
+;  MW_RECORD
+;   Set up for receiving a Message Waiting event from the PBX.
+; ************************************************************************
+:MW_RECORD
+
+  ; Assign the record type.
+  Assign RecType "MW"
+	
+  ; Assign the record format.
+  if "$(LastSeqNo)" EQ "99"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><#2>1!L5311<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><#3>"
+  if "$(LastSeqNo)" EQ "199"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:1:RJ,SP><inSeqNo:TEXT:3:RJ,ZP><#2>1!L5311<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><#3>"
+
+Return	
+; ************************************************************************
+
+; ************************************************************************
+;  SMDR_RECORD
+;   Set up for receiving a SMDR record
+; ************************************************************************
+:SMDR_RECORD
+
+  ; Assign the record type.
+  Assign RecType "SMDR"
+
+  ; Assign the record format.
+  if "$(LastSeqNo)" EQ "99"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><inSMDR:TEXT:255:>"
+  if "$(LastSeqNo)" EQ "199"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><inSMDR:TEXT:255:>"
+  
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  WAKEUP_RECORD
+;   Set up for receiving a Wakeup record
+; ************************************************************************
+:WAKEUP_RECORD
+
+  ; Assign the record type.
+  Assign RecType "WK"
+
+  ; Assign the record format.
+  if "$(LastSeqNo)" EQ "99"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><#2>1!L1916<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inWakeupTime:TEXT:4:LJ,ZP><inWakeupResult:TEXT:1:LJ,ZP><#3>"
+  if "$(LastSeqNo)" EQ "199"
+    AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:1:RJ,SP><inSeqNo:TEXT:3:RJ,ZP><#2>1!L1916<inStatus:TEXT:1:LJ,SP><inExtn:TEXT:6:LJ,ZP><inWakeupTime:TEXT:4:LJ,ZP><inWakeupResult:TEXT:1:LJ,ZP><#3>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  STATUS_RECORD
+;   Set up for receiving a Link Status record
+; ************************************************************************
+:STATUS_RECORD
+
+  ; Assign the record type.
+  Assign RecType "ST"
+
+  ; Assign the record format.
+  AssignAsIs _G_IN_RECORDFORMAT "<inTextID:TEXT:1:LJ,SP><inEquipNo:TEXT:2:RJ,SP><inSeqNo:TEXT:2:RJ,ZP><#2>1!L7007<inStatus:TEXT:1:LJ,SP>  <#3>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleMaidStatus
+;   Execution is sent here whenever we receive a Maid Status message from
+;   the PBX.
+; ************************************************************************
+:HandleMaidStatus
+
+; Strip any * or #
+  ReplaceStr "$(inStatus)" "*" "" "TRUE" "FALSE"
+  Assign inStatus "$(_G_RESULT)"
+  ReplaceStr "$(inStatus)" "#" "" "FALSE" "TRUE"
+  Assign inStatus "$(_G_RESULT)"
+
+  ; Create the event if it's not blank
+  if "$(inStatus)" NE ""
+    CreateRoomStatus "$(inExtn)" "$(inStatus)"
+
+  ; Echo if it's blank
+  if "$(inStatus)" EQ ""
+    Echo Er: Skipping Room Status with invalid character
+  
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleMessageWaiting
+;   Execution is sent here whenever we receive a Message Waiting message
+;   from the PBX.
+; ************************************************************************
+:HandleMessageWaiting
+
+  ; Make sure we have a Status.
+  Assign WorkVal "FALSE"
+  If "$(inStatus)" EQ "1"
+    Assign WorkVal "TRUE"
+
+  ; Create the event.
+  CreateMessageWaiting "$(inExtn)" "$(WorkVal)"
+  
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleWakeup
+;   Execution is sent here whenever we receive a Wakeup message from
+;   the PBX.
+; ************************************************************************
+:HandleWakeup
+
+  ; Make sure we have a Status.
+  If "$(inStatus)" EQ "1"
+    Goto HandleWakeup_Set
+  If "$(inStatus)" EQ "2"
+    Goto HandleWakeup_Cancel
+  If "$(inStatus)" EQ "3"
+    Goto HandleWakeup_Result
+
+  ; Done with this message
+  Goto HandleWakeup_Done
+
+:HandleWakeup_Set
+  
+  ; Create the event.
+  CreateSetWakeup "$(inExtn)" "" "<inWakeupTime:TIME:4:HHMM>"
+
+  ; Done with this message
+  Goto HandleWakeup_Done
+  
+:HandleWakeup_Cancel
+
+  ; Create the event.
+  CreateClearAllWakeup "$(inExtn)" ""
+
+  ; Done with this message
+  Goto HandleWakeup_Done
+
+:HandleWakeup_Result
+
+  ; Default message
+  Assign WorkVal ""
+  
+  ; Check the result and display appropriate message
+  If "$(inWakeupResult)" EQ "1"
+     Assign WorkVal "Wakeup call for $(inWakeupTime) on extn $(inExtn) answered"
+
+  If "$(inWakeupResult)" EQ "2"
+     Assign WorkVal "Wakeup call for $(inWakeupTime) on extn $(inExtn) failed because the line was busy"
+
+  If "$(inWakeupResult)" EQ "3"
+     Assign WorkVal "Wakeup call for $(inWakeupTime) on extn $(inExtn) failed because there was no answer"
+     
+  If "$(inWakeupResult)" EQ "4"
+     Assign WorkVal "Wakeup call for $(inWakeupTime) on extn $(inExtn) failed because it was blocked"
+
+  If "$(WorkVal)" NE ""
+     Echo "$(WorkVal)"
+
+  ; Done with this message
+  Goto HandleWakeup_Done
+
+:HandleWakeup_Done
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleStatus
+;   Execution is sent here whenever we receive a Link Status message from
+;   the PBX.
+; ************************************************************************
+:HandleStatus
+
+  ; Check the function code and perform relevant action.
+  
+  ; If it's a no changes response then we're done here.
+  If "$(inStatus)" EQ "0"
+    Goto HandleStatus_Done
+  
+  ; If it's a changes made response then we need to do a DB swap.
+  If "$(inStatus)" EQ "2"
+    Goto HandleStatus_DBSwap
+    
+  ; If it's a confirmation of link release then not sure how we got it.
+  ; but we should probably ignore it anyway.
+  If "$(inStatus)" EQ "6"
+    Goto HandleStatus_ConfirmRelease
+
+Goto HandleStatus_Done
+    
+:HandleStatus_DBSwap
+
+  ; Send a start db swap message
+  Assign SendRec "<#2>1!L70073  <#3>"
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<_G_RESULT:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<_G_RESULT:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the record.
+  Call SendRecord
+
+  ; Send a finish db swap message
+  Assign SendRec "<#2>1!L70074  <#3>"
+
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<_G_RESULT:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<_G_RESULT:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the record.
+  Call SendRecord
+
+  Goto HandleStatus_Done
+  
+:HandleStatus_ConfirmRelease
+
+  ; Do nothing
+  
+:HandleStatus_Done
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleSMDR
+;   Execution is sent here whenever we receive an SMDR message from
+;   the PBX.
+; ************************************************************************
+:HandleSMDR
+
+  ; Create the event.
+  if "$(DoSMDRPassThru)" EQ "TRUE"
+    PassToDataCollection $(inSMDR)
+  
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  SendRecord
+;   Execution is sent here whenever we have a record in SendRec to send
+;   to the PBX.
+; ************************************************************************
+:SendRecord
+
+:ResendRecord
+
+  ; Send our record.
+  Send $(SendRec)
+  Echo Tx: $(SendRec)
+
+Goto SR_Done
+
+  ; Setup a wait timer for 10 seconds.
+  StartWaitTimer 10
+
+:WaitForReplyToRec
+
+  ; Wait for something from the port.
+  ReadFromPort 1
+
+  ; Check if it's a PMS reply message.
+  if "$(_PORTCHARS)" EQ "3"
+    Assign ReceivedRec "3"
+  if "$(_PORTCHARS)" EQ "3"
+    Goto ReceiveReplyToRec
+
+  if "$(_PORTCHARS)" EQ "1"
+	Assign ReceivedRec "1"
+  if "$(_PORTCHARS)" EQ "1"
+    Call ReceiveRecord
+
+  if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+    Goto SR_TimeoutWaitingReply
+
+  ; Keep waiting.
+  Goto WaitForReplyToRec
+	
+:ReceiveReplyToRec
+
+  ; Set our reply counter.
+  Assign SR_ReplyCount 1
+  
+:SR_ReadReply
+
+  ; Read from the port.
+  ReadFromPort 1
+  
+  ; Check if we got anything.
+  if "$(_PORTCHARS)" NE ""
+    Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+  if "$(_PORTCHARS)" NE ""
+    Assign SR_ReplyCount $(SR_ReplyCount) + 1
+
+  if $(SR_ReplyCount) EQ 6
+    Goto SR_GotReply
+	
+  ; Loop back so we get all the characters.
+  Goto SR_ReadReply
+  	
+:SR_GotReply
+  Echo Rx: $(RecievedRec)
+
+  ; If we received a 2 as the last character then an error occurred sending. 
+  ; We should resend.
+  if "$(_PORTCHARS)" EQ "2"
+    Echo Er: PBX reports 'Received text error'
+  if "$(_PORTCHARS)" EQ "2"
+    Goto SendRecord
+
+:SR_Done	
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  SR_TimeoutWaitingReply
+;   Execution is sent here when we timeout waiting for a reply to a 
+;   record.
+; ************************************************************************
+:SR_TimeoutWaitingReply
+
+  Echo Er: Timeout whilst waiting for reply to record.
+  Echo Er: Received '$(ReceivedRec)'.
+
+Goto ResendRecord
+; ************************************************************************
+
+; ************************************************************************
+;  IgnoreRecord
+;   Flag that the processing was successful and exit the script.
+; ************************************************************************
+:IgnoreRecord
+
+  FLAGPROCESSED OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  HandleOKAndExit
+;   Flag that the processing was successful and exit the script.
+; ************************************************************************
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  HandleFailedAndExit
+;   Flag that the processing has failed and exit the script.
+; ************************************************************************
+:HandleFailedAndExit
+
+  FLAGPROCESSED FAIL
+
+Exit
+; ************************************************************************

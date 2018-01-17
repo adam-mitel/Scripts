@@ -1,0 +1,473 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for barring and unbarring lines on
+;  an SDX Index switch.
+;
+;                                                               ph-020701
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define SendRec
+define ReceivedRec
+define GotWaitString
+define Flag
+
+define barredflag
+define esc_str
+define bar_str
+define buildbarstr
+define in_esc
+
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+  Openport
+  send <#27><#13>
+  call TakeWhatsComing
+  send nmysbb<#13>
+  call TakeWhatsComing
+  send <#27>
+  call TakeWhatsComing
+
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+  if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE" then
+    call UnbarLine
+
+  if "$(_EV_COSALLOWOUTGOING)" NE "TRUE" then
+    call BarLine
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  UnbarLine
+; ************************************************************************
+:UnbarLine
+
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+
+  Send 3<#13>
+  Echo Tx: 3<#13> 
+  call TakeWhatsComing
+
+  Send <_EV_EXTNNUMBER:TEXT:6:><#13>
+  Echo Tx: <_EV_EXTNNUMBER:TEXT:6:><#13>
+  call TakeWhatsComing
+
+  Send 12<#13>
+  Echo Tx: 12<#13>
+  call TakeWhatsComing
+ 
+  Send 2<#13>
+  Echo Tx: 2<#13>
+  assign barredflag "FALSE"
+  call TakeWhatsComingSpecial
+  if "$(barredflag)" EQ "TRUE"
+    Send 2<#13>
+  if "$(barredflag)" EQ "TRUE"
+    Echo Tx: 2<#13>
+  if "$(barredflag)" EQ "TRUE"
+    call TakeWhatsComing
+     
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  BarLine
+; ************************************************************************
+:BarLine
+
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+
+  Send 3<#13>
+  Echo Tx: 3<#13> 
+  call TakeWhatsComing
+
+  Send <_EV_EXTNNUMBER:TEXT:6:><#13>
+  Echo Tx: <_EV_EXTNNUMBER:TEXT:6:><#13>
+  call TakeWhatsComing
+
+  Send 12<#13>
+  Echo Tx: 12<#13>
+  call TakeWhatsComing
+ 
+  Send 2<#13>
+  Echo Tx: 2<#13>
+  assign barredflag "FALSE"  
+  call TakeWhatsComingSpecial
+  if "$(barredflag)" NE "TRUE"
+    Send 2<#13>
+  if "$(barredflag)" NE "TRUE"
+    Echo Tx: 2<#13>
+  if "$(barredflag)" NE "TRUE"
+    call TakeWhatsComing
+ 
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+
+  Send <#27>
+  Echo Tx: <#27>
+  call TakeWhatsComing
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComing
+;    Continues to receive and echo records that end in CR until a specific
+;	   string is received.
+; ************************************************************************
+:TakeWhatsComing
+
+; Start a fresh record
+assign ReceivedRec ""
+assign GotWaitString "FALSE"
+
+StartWaitTimer 2
+assign Flag "FALSE"
+
+; Read the next character
+:TakeWhatsComing_Read
+ReadFromPort 1
+
+; Nothing received, wait longer
+if "$(_PORTCHARS)" EQ ""
+	call TakeWhatsComing_TestTimer
+;if "$(Flag)" EQ "TRUE"
+;	ECHO Timed out after running TakeWhatsComing_TestTimer
+if "$(Flag)" EQ "TRUE"
+	Echo Rx: $(ReceivedRec)
+if "$(Flag)" EQ "TRUE"
+	Return
+if "$(_PORTCHARS)" EQ ""
+	goto TakeWhatsComing_Read
+
+; Add the received character to the record if it is not LF
+if "$(_PORTCHARS)" NE "<#10>"
+  assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+; if this record is what we are expecting, Echo it and return
+;ContainsStr "INDeX" "$(_PORTCHARS)" "FALSE"
+;if "$(_G_RESULT)" EQ "TRUE"
+;if "$(_PORTCHARS)" EQ ">"
+;	Echo Rx: $(ReceivedRec)
+if "$(_G_RESULT)" EQ "TRUE"
+;if "$(_PORTCHARS)" EQ ">"
+;   assign GotWaitString "TRUE"
+;if "$(_G_RESULT)" EQ "TRUE"
+;if "$(_PORTCHARS)" EQ ">"
+;	Return
+
+; Carry on reading the current record
+goto TakeWhatsComing_Read
+
+:TakeWhatsComing_TestTimer
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	assign FLAG "TRUE"
+return
+   
+; ************************************************************************
+
+
+; ************************************************************************
+;  TakeWhatsComingSpecial
+;    Same as TakeWhatsComing but it does a more complex task of working
+;	   out if the line is barred or not from the stream that comes back. 
+; ************************************************************************
+:TakeWhatsComingSpecial
+
+; Start a fresh record
+assign ReceivedRec ""
+assign GotWaitString "FALSE"
+assign in_esc "FALSE"
+assign buildbarstr "FALSE"
+
+StartWaitTimer 2
+assign Flag "FALSE"
+
+; Read the next character
+:TakeWhatsComingSpecial_Read
+ReadFromPort 1
+
+; Nothing received, wait longer
+if "$(_PORTCHARS)" EQ ""
+	call TakeWhatsComingSpecial_TestTimer
+;if "$(Flag)" EQ "TRUE"
+;	ECHO Timed out after running TakeWhatsComing_TestTimer
+if "$(Flag)" EQ "TRUE"
+	Echo Rx: $(ReceivedRec)
+if "$(Flag)" EQ "TRUE"
+	Return
+if "$(_PORTCHARS)" EQ ""
+	goto TakeWhatsComingSpecial_Read
+
+; Add the received character to the record if it is not LF
+if "$(_PORTCHARS)" NE "<#10>"
+  assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" EQ "<#27>"
+  goto TakeWhatsComingSpecial_SkipBarChar
+if "$(buildbarstr)" EQ "TRUE"
+  assign bar_str "$(bar_str)" "$(_PORTCHARS)"
+:TakeWhatsComingSpecial_SkipBarChar
+
+if "$(in_esc)" EQ "TRUE"
+  assign esc_str "$(esc_str)" "$(_PORTCHARS)"
+if "$(in_esc)" EQ "TRUE"
+  call TakeWhatsComingSpecial_TestEscEnd
+if "$(in_esc)" NE "TRUE"
+  call TakeWhatsComingSpecial_ProcEscStr
+
+; If this is an escape char
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign esc_str ""
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign buildbarstr "FALSE"
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign in_esc "TRUE"
+  
+if "$(bar_str)" EQ "no"
+  assign barredflag "TRUE"
+if "$(bar_str)" NE "no"
+  assign barredflag "FALSE"
+  
+; Carry on reading the current record
+goto TakeWhatsComingSpecial_Read
+
+:TakeWhatsComingSpecial_TestTimer
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	assign FLAG "TRUE"
+return
+   
+; ************************************************************************
+
+:TakeWhatsComingSpecial_TestEscEnd
+  
+if "$(_PORTCHARS)" EQ "H"
+  assign in_esc "FALSE"
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign in_esc "TRUE"
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign esc_str ""
+if "$(_PORTCHARS)" EQ "<#27>"
+  assign buildbarstr "FALSE"
+  
+Return
+
+:TakeWhatsComingSpecial_ProcEscStr
+ 
+if "$(esc_str)" EQ "[4;22H"
+  assign buildbarstr "TRUE"
+if "$(esc_str)" EQ "[4;22H"
+  assign bar_str ""
+if "$(esc_str)" EQ "[4;22H"
+  assign esc_str ""
+ 
+Return
+
+; ******************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+
+
+; ******************************************************************************
+;  HandleOKAndExit
+;    This will flag that the event is processed and exit the script when the
+;    record has been processed.
+
+:HandleOKAndExit
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+

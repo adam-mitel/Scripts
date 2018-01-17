@@ -1,0 +1,1320 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.2.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an Avaya
+;  Definity exchange using the ASCII protocol.
+;
+;  Maid Status Codes from this PBX:
+;
+;  Code -  Spec Description (Tiger Description)
+;    1  -  Housekeeper in Room
+;    2  -  Room Clean - Clean (Vacant Inspected)
+;    3  -  Room Clean - Occupied (Occupied Inspected)
+;    4  -  Room not Clean - Vacant (Vacant Dirty)
+;    5  -  Room not Clean - Occupied (Occupied Dirty)
+;    6  -  Room Clean - Needs Inspection (Vacant Clean)
+;
+;  Protocol defined by document:
+;
+;    Title:      GuestWorks(R) and DEFINITY(R) Enterprise Communications Server
+;                Property Management System Interface Specifications
+;
+;    Revision:   Issue 3 (November 2000)
+;
+;  Version 1.0                                                 pjh-170503
+;
+;  NOTES:
+;			This PABX has a heartbeat message which must be sent 
+;			periodically or the link will timeout. It is recommended that
+;			you set PeriodicCheckInterval to be between 5 and 20 seconds.
+;
+;  Modifications - AU - 09/04/2016 - 50.0.2.0
+;	* Added a setting to change the Room Transfer method to Checkout/Checkin (Default)
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 28/05/2013
+;	* Modified all incoming records so the extension is RJ,ZP
+;
+;  Modifications - AU - 25/10/2011
+;	* Modified HandleRoomStatus so we will not create an event if in_RoomStatusCode
+;	  is blank which was causing HI.exe to hang
+;
+;  Modifications - AU - 19/04/2011
+;	* Modified Extension Number in DDI section to be RJ rather than LJ
+;
+;  Modifications - AU - 22/09/2010
+;	* Modified DDI number in DDI section to be RJ from LJ
+;	* Added an option to set whether DDI should be allocated only to master extensions
+;	* Added an option in the INIT to set whether it is an IP Connection or not
+;	* Added an option to set whether to send the Room Number before the Guest Name
+;	* Modified the INIT to act on whether it is an IP connection or not
+;	* Modified incoming records to allow for a default extension length of 5
+;	* Modified incoming records to allow for extension length of 7 if configured in the INIT
+;	* Modified HandleRoomStatus so the Station and Status values are stored in dedicated variables
+;	* Modified HandleGIC to check in the station if it is not checked in
+;
+;  Modifications - AU - 29/06/2010
+;	* Added DDI label so we are able to send DDI requests via the VIP record
+;	* Added options at the top of the script for DND and DDI events
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+;
+define MsgCnt
+define GuestName
+define FeatureCode
+define StationNo
+define CovPath
+define WorkVal
+define RecType
+define ExtnLength
+define NameLength
+;
+define f_Sending
+;
+define s_RoomBeforeName
+define s_IPConnection
+define s_ProcessDND
+define s_ProcessDDI
+define s_DDIMasterOnly
+define s_TransferCOCI
+;
+define in_FeatCode
+define in_ProcessCode
+define in_Station
+define in_GuestName
+define in_CoverPath
+define in_RestrictionLevel
+define in_LangCode
+define in_VMPasswd
+define in_MsgCt
+define in_MaidID
+define in_DestStation
+define in_ReqDID
+define in_AddRemMsg
+define in_TextFaxMsg
+define in_BCC
+define in_DID
+define in_VacOcc
+define in_MsgWaiting
+define in_ReleaseReason
+define in_RoomStatusStation
+define in_RoomStatusCode
+;
+; ************************************************************************
+;  INIT
+;   This part of the script is run once at the program start-up
+; ************************************************************************
+:INIT
+
+	// OPT: Set whether this interface will use an IP Connection
+	Assign s_IPConnection "YES"
+
+	// OPT: The next line sets the Coverage Path to set on checkin/room update.
+	//		Default "    " uses PBX's default setting. (Max 4 Characters).
+	Assign CovPath "98 "
+
+	// OPT: Set the extn length and name length here
+	//		Note - the only valid entries are 5/15 (default) or 7/27 if
+	//                     Special Applications SA8662 is enabled on the PBX
+	Assign ExtnLength "5"
+	Assign NameLength "15"
+
+	// OPT: Set whether we want to display the room number before the name
+	Assign s_RoomBeforeName "YES"
+
+	// OPT: Set whether we want to process Do Not Disturb events
+	Assign s_ProcessDND "YES"
+
+	// OPT: Set whether we want to process Direct Dial In events
+	Assign s_ProcessDDI "NO"
+
+	// OPT: Set whether we only want to set DDI events for Master Extensions
+	Assign s_DDIMasterOnly "YES"
+
+	// OPT: Set whether we send room transfers with checkout/checkin messages or
+	//      the traditional transfer message
+	Assign s_TransferCOCI "YES"
+
+	// Initialize Message Counter.
+	CreateAutoIncNumber MsgCntr 0 9 0
+
+	Assign f_Sending "FALSE"
+
+	if "$(s_IPConnection)" EQ "YES"
+		Exit
+	
+	OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+; ************************************************************************
+:PORT_OPENED
+
+	Call HandleHeartbeat	
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+; ************************************************************************
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+; ************************************************************************
+:Checkin
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign GuestName "<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
+	
+	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+	
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+; ************************************************************************
+:Checkout
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	// Build Record
+	Assign SendRec "<#41><MsgCnt:TEXT:1:LJ,ZP>CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+; ************************************************************************
+:ClassOfService
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign WorkVal 1
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal 0
+
+	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+; ************************************************************************
+:RoomUpdate
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign GuestName "<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
+	
+	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+; ************************************************************************
+:RoomTransfer
+
+	// Store guest name with new extn number before transfer.
+	Assign GuestName "<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign GuestName "$(_EV_TRDESTROOMNUMBER) $(_EV_NAMEDISPLAY)"
+
+	if "$(s_TransferCOCI)" EQ "YES"
+		Goto RoomTransfer_Checkout
+	
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#36><MsgCnt:TEXT:1:LJ,ZP>RMC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	// Send room update with new name for destination extn.
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+
+:RoomTransfer_Checkout
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_Checkin
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	// Build Record
+	Assign SendRec "<#41><MsgCnt:TEXT:1:LJ,ZP>CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+:RoomTransfer_Checkin
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_Done
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+	
+	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign WorkVal 1
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal 0
+
+	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+:RoomTransfer_Done
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+; ************************************************************************
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+; ************************************************************************
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+; ************************************************************************
+:MessageWaiting
+
+	// OPT: To send Message Waiting notifications to the PABX comment out the
+	//		next line.
+	// goto IgnoreRecord
+
+	// Work out whether lamp should be on or off. (Using GuestName to store
+	// the code to add or subtract from message count).
+	Assign WorkVal "2"
+	Assign GuestName "3"
+	if "$(_EV_MWSTATE)" EQ "TRUE"
+		Assign WorkVal "1"
+	if "$(_EV_MWSTATE)" EQ "TRUE"
+		Assign GuestName "2"
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#35><MsgCnt:TEXT:1:LJ,ZP>MSG$(WorkVal)<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>$(GuestName)2  <#3>"
+	
+	// Custom DID TEST
+//	Assign SendRec "<#73><MsgCnt:TEXT:1:LJ,ZP>VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ,SP>30081                        <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+; ************************************************************************
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+; ************************************************************************
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+; ************************************************************************
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+; ************************************************************************
+:DoNotDisturb
+
+	if "$(s_ProcessDND)" NE "YES"
+		Goto IgnoreRecord
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign WorkVal 0
+	if "$(_EV_ALLOWOUTGOING)" NE "1"
+		Assign WorkVal 1
+
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign WorkVal $(WorkVal) + 5
+
+	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+; ************************************************************************
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+; ************************************************************************
+:DDI
+
+	if "$(s_ProcessDDI)" NE "YES"
+		Goto IgnoreRecord
+
+	if "$(_EV_DDIACTION)" NE "SET"
+		Goto IgnoreRecord
+	if "$(_EV_DDI)" EQ ""
+		Goto IgnoreRecord
+
+	if "$(s_DDIMasterOnly)" NE "YES"
+		Goto DDI_SendMessage
+
+	IsMasterExtn "$(_EV_EXTNNUMBER)"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto DDI_Done
+
+:DDI_SendMessage
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#73><MsgCnt:TEXT:1:LJ,ZP>VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_DDI:TEXT:5:RJ,SP>                        <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+:DDI_Done
+
+goto HandleOKAndExit
+; ************************************************************************
+
+; ************************************************************************
+;  PeriodicCheck
+;   Execution is periodically carried out from here by the program to
+;   handle periodic events.
+; ************************************************************************
+:PeriodicCheck
+
+	Call HandleHeartbeat
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  HandleHeartbeat
+; ************************************************************************
+:HandleHeartbeat
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STSFF  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  CheckIncoming
+;   Execution is periodically carried out from here by the program to
+;   check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+	Assign f_Sending "FALSE"
+
+	ReadFromPort 1
+
+	; If we have an STX then store it and goto ReceiveRecord to get the 
+	; rest of it.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	; If we get an ENQ we should respond with an ACK.
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Send <#6>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Tx: <#6>
+		
+	; Not an STX so dump it out.
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: "$(_PORTCHARS)"
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  SendRecord
+; ************************************************************************
+:SendRecord
+
+	Assign f_Sending "TRUE"
+
+	; Send the record.
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 5
+	
+:WaitForACKToRec
+
+	ReadFromPort 1
+	
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+	
+	; If we got an ACK then we're all good.
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto GotACKToRec
+
+	; If we got a NAK then we need to resend the record.
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+	; If Timeout occurred we should send an ENQ to re-request response.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout waiting for ACK to record.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Send <#5>
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Tx: <#5>
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		StartWaitTimer 5
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto WaitForACKToRec
+
+	; If we got an STX we should read the record, send the ACK and hopefully end up back here.. 
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+	Goto WaitForACKToRec
+
+:GotACKToRec
+	
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  ReceiveRecord
+;   This is called once we have received an STX in CheckIncoming.
+;   ReceivedRec will already contain "<STX>"
+; ************************************************************************
+:ReceiveRecord
+	Assign RecType ""
+
+	; Read next character, this is the Feature Code
+	ReadFromPort 1 1
+	Assign FeatureCode "$(_PORTCHARS)"
+	Assign ReceivedRec "$(ReceivedRec)" + "$(_PORTCHARS)"
+
+	; Read next character, this is the Message Count
+	ReadFromPort 1 1
+	Assign ReceivedRec "$(ReceivedRec)" + "$(_PORTCHARS)"
+
+	; Read next 3 characters, these are the record type.
+	ReadFromPort 3 2
+	Assign RecType "$(_PORTCHARS)"
+	Assign ReceivedRec "$(ReceivedRec)" + "$(_PORTCHARS)"
+
+	; Continue reading rest of the record until we get an ETX
+	StartWaitTimer 5
+	
+:ReadRecord
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)" + "$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReadBCC
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto ReceiveTimeout
+
+	Goto ReadRecord
+
+:ReadBCC
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)" + "$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ ""
+		Echo Er: No BCC received. Using NULL instead.
+	if "$(_PORTCHARS)" EQ ""
+		Assign ReceivedRec "$(ReceivedRec)" + "<#0>"
+
+:FinishedReceiving
+
+	; Echo record to screen
+	Echo Rx: $(ReceivedRec)
+
+	; Send an ACK in reply
+	Send <#6>
+	Echo Tx: <#6>
+	
+	; Set up record formats
+
+	if "$(RecType)" EQ "HKR"
+		Call HKRRecord
+
+	if "$(RecType)" EQ "HKS"
+		Call HKSRecord
+
+	if "$(RecType)" EQ "MSG"
+		Call MSGRecord
+
+	if "$(RecType)" EQ "CR "
+		Call CRRecord
+
+	if "$(RecType)" EQ "CKI"
+		Call CKIRecord
+
+	if "$(RecType)" EQ "CKO"
+		Call CKORecord
+
+	if "$(RecType)" EQ "VIP"
+		Call VIPRecord
+
+	if "$(RecType)" EQ "RMI"
+		Call RMIRecord
+
+	if "$(RecType)" EQ "GIC"
+		Call GICRecord
+
+	if "$(RecType)" EQ "STS"
+		Call STSRecord
+
+	if "$(RecType)" EQ ""
+		Goto SkipProcessIncoming
+	
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		goto ReceiveError
+
+	if "$(RecType)" EQ "HKR"
+		Call HandleRSRecord
+
+	if "$(RecType)" EQ "HKS"
+		Call HandleRSRecord
+
+	if "$(RecType)" EQ "MSG"
+		Call HandleMSGRecord
+
+	if "$(RecType)" EQ "CR "
+		Call HandleCRRecord
+
+	if "$(RecType)" EQ "CKI"
+		Call HandleCKIRecord
+
+	if "$(RecType)" EQ "CKO"
+		Call HandleCKORecord
+
+	if "$(RecType)" EQ "VIP"
+		Call HandleVIPRecord
+
+	if "$(RecType)" EQ "RMC"
+		Call HandleRMCRecord
+
+	if "$(RecType)" EQ "GIC"
+		Call HandleGICRecord
+
+	if "$(RecType)" EQ "STS"
+		Call HandleSTSRecord
+
+:SkipProcessIncoming
+
+	if "$(RecType)" EQ ""
+		Echo Er: Unrecognised message.
+
+	if "$(f_Sending)" EQ "TRUE"
+		Echo Going back to wait for reply.
+	if "$(f_Sending)" EQ "TRUE"
+		StartWaitTimer 5
+
+Return
+
+:ReceiveError
+
+	Echo Er: Error with received record. Ignoring.
+
+	if "$(f_Sending)" EQ "TRUE"
+		StartWaitTimer 5
+
+Return
+
+:ReceiveTimeout
+
+	Echo Er: Timeout receiving record.
+	Echo Rx: $(ReceivedRec)
+	
+	if "$(f_Sending)" EQ "TRUE"
+		StartWaitTimer 5
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;	INCOMING RECORD FORMAT HANDLERS
+; ************************************************************************
+
+
+; ************************************************************************
+:HKRRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>HKR<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_MaidID:TEXT:6:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>HKR<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_MaidID:TEXT:6:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:HKSRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>HKS<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_MaidID:TEXT:6:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>HKS<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_MaidID:TEXT:6:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:MSGRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>MSG<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_AddRemMsg:TEXT:1:LJ,SP><in_TextFaxMsg:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>MSG<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_AddRemMsg:TEXT:1:LJ,SP><in_TextFaxMsg:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:CRRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CR <in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_RestrictionLevel:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CR <in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_RestrictionLevel:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:CKIRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CKI<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:15:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP><in_ReqDID:TEXT:1:LJ,SP>   <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CKI<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:27:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP><in_ReqDID:TEXT:1:LJ,SP>   <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:CKORecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CKO<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,LP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>CKO<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:VIPRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>VIP<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_DID:TEXT:5:LJ,SP>                        <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>VIP<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_DID:TEXT:5:LJ,SP>                        <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:RMIRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>RMI<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:5:RJ,ZP><in_VacOcc:TEXT:1:LJ,SP><in_MsgWaiting:TEXT:1:LJ,SP><in_RestrictionLevel:TEXT:2:LJ,SP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:15:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP>    <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>RMI<in_ProcessCode:TEXT:1:LJ,ZP><in_Station:TEXT:7:RJ,ZP><in_VacOcc:TEXT:1:LJ,SP><in_MsgWaiting:TEXT:1:LJ,SP><in_RestrictionLevel:TEXT:2:LJ,SP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:27:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP>    <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:RMCRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>RMC<in_ProcessCode:TEXT:1:LJ,ZP><in_DestStation:TEXT:5:RJ,ZP><in_Station:TEXT:5:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,ZP><in_MsgCt:TEXT:1:LJ,ZP>RMC<in_ProcessCode:TEXT:1:LJ,ZP><in_DestStation:TEXT:5:RJ,ZP><in_Station:TEXT:7:RJ,SP>  <#3><in_BCC:TEXT:1:LJ,ZP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:GICRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,SP><in_MsgCt:TEXT:1:LJ,SP>GIC<in_ProcessCode:TEXT:1:LJ,SP><in_Station:TEXT:5:RJ,ZP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:15:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP>    <#3><in_BCC:TEXT:1:LJ,SP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,SP><in_MsgCt:TEXT:1:LJ,SP>GIC<in_ProcessCode:TEXT:1:LJ,SP><in_Station:TEXT:7:RJ,ZP><in_CoverPath:TEXT:4:LJ,SP><in_GuestName:TEXT:27:LJ,SP><in_VMPasswD:TEXT:4:LJ,SP><in_LangCode:TEXT:2:LJ,SP>    <#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:STSRecord
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,SP><in_MsgCt:TEXT:1:LJ,SP>STS<in_ProcessCode:TEXT:1:LJ,SP><in_ReleaseReason:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,SP>"
+
+	if "$(ExtnLength)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2><in_FeatCode:TEXT:1:LJ,SP><in_MsgCt:TEXT:1:LJ,SP>STS<in_ProcessCode:TEXT:1:LJ,SP><in_ReleaseReason:TEXT:1:LJ,SP>  <#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;	INCOMING RECORD EVENT HANDLERS
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRSRecord
+;
+;	Creates event for Room Status from Designated Station or Room.
+; ************************************************************************
+:HandleRSRecord
+
+	Assign in_RoomStatusStation "$(in_Station)"
+	Assign in_RoomStatusCode "$(in_ProcessCode)"
+
+	Call SendRSReply
+
+	if "$(in_RoomStatusCode)" EQ ""
+		Echo Er: Blank in_RoomStatusCode for Extension $(in_RoomStatusStation) - Skipping event
+	if "$(in_RoomStatusCode)" NE ""
+		CreateRoomStatus "$(in_RoomStatusStation)" "$(in_RoomStatusCode)"
+
+	Assign in_RoomStatusStation ""
+	Assign in_RoomStatusCode ""
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+:SendRSReply
+
+	Call GetNextMsgCnt
+
+	; Depending on whether this was an HKR or HKS record send the correct reply.
+	if "$(in_FeatCode)" EQ "<#33>"
+		Assign SendRec "<#33><MsgCnt:TEXT:1:LJ,ZP>HKR9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
+	if "$(in_FeatCode)" EQ "<#34>"
+		Assign SendRec "<#34><MsgCnt:TEXT:1:LJ,ZP>HKS9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleMSGRecord
+;
+;	Creates event for Message Waiting.
+; ************************************************************************
+:HandleMSGRecord
+
+	Assign WorkVal ""
+
+	; Handle Msg Waiting Lamp Change.
+
+	if "$(in_ProcessCode)" EQ "3"
+		Assign WorkVal "TRUE"
+	if "$(in_ProcessCode)" EQ "4"
+		Assign WorkVal "FALSE"
+
+	if "$(WorkVal)" NE ""
+		CreateMessageWaiting "$(in_Station)" "$(WorkVal)"
+
+	; Handle Msg Waiting set/clear failure.
+	if "$(in_ProcessCode)" EQ "5"
+		Echo Message waiting state change for station $(in_Station) was not actioned by PBX.
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleCRRecord
+;
+;	Handles Controlled Restriction changes. Displays informational 
+;	message on screen/log.
+; ************************************************************************
+:HandleCRRecord
+
+	; Handle Class of Restriction change
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: Restriction level for station $(in_Station) changed to $(in_RestrictionLevel) on PBX.
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleCKIRecord
+;
+;	Handles checkin reply message.
+; ************************************************************************
+:HandleCKIRecord
+
+	; Handle checkin to occupied station.
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: Checkin to occupied station $(in_Station).
+	if "$(in_ProcessCode)" EQ "2"
+		Goto HandleCKIRecord_SendUpdate
+
+	; Handle checkin DID allocation reply.
+	if "$(in_ProcessCode)" EQ "3"
+		Echo If: Checkin allocated DID $(in_GuestName) for $(in_Station).
+
+Return
+
+:HandleCKIRecord_SendUpdate
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleCKORecord
+;
+;	Handles checkout reply message.
+; ************************************************************************
+:HandleCKORecord
+
+	; Handle checkout MWI was off reply
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: Checkout of station $(in_Station) complete, MWI was off.
+
+	; Handle checkout MWI was on reply
+	if "$(in_ProcessCode)" EQ "3"
+		Echo If: Checkout of station $(in_Station) complete, MWI was on.
+		
+	; Handle checkout of vacant station
+	if "$(in_ProcessCode)" EQ "4"
+		Echo If: Checkout of vacant station $(in_Station).
+
+	; Handle checkout MWI was not changed.
+	if "$(in_ProcessCode)" EQ "5"
+		Echo If: Checkout of station $(in_Station) complete, MWI is still on.
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleVIPRecord
+;
+;	Handles VIP reply/informational messages.
+; ************************************************************************
+:HandleVIPRecord
+
+	; Successful assignment.
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: Custom DID $(in_DID) assigned to station $(in_Station)
+
+	; Checked out room
+	if "$(in_ProcessCode)" EQ "3"
+		Echo If: Custom DID $(in_DID) not assigned to vacant station $(in_Station)
+
+	; DID Unavailable
+	if "$(in_ProcessCode)" EQ "4"
+		Echo If: Custom DID $(in_DID) not available for assignment to station $(in_Station)
+
+	; DID Changed
+	if "$(in_ProcessCode)" EQ "5"
+		Echo If: Custom DID $(in_DID) removed from station $(in_Station) by PBX
+
+	; DID Set
+	if "$(in_ProcessCode)" EQ "5"
+		Echo If: Custom DID $(in_DID) assigned to station $(in_Station) by PBX
+		
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleRMCRecord
+;
+;	Handles Room Change reply. Displays informational message on screen/log.
+; ************************************************************************
+:HandleRMCRecord
+
+	; Handle room change room status error
+	if "$(in_ProcessCode)" EQ "3"
+		Echo If: Room change completed from $(in_Station) to $(in_DestStation) but errors were detected in room status.
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleGICRecord
+;
+;	Handles Guest Info Change reply. Displays informational message on 
+;	screen/log.
+; ************************************************************************
+:HandleGICRecord
+
+	; Handle guest info change complete.
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: Guest Info Change completed for station $(in_Station).
+
+	; Handle guest info change when no info changed.
+	if "$(in_ProcessCode)" EQ "4"
+		Echo If: Guest Info unchanged for station $(in_Station).
+
+	if "$(in_ProcessCode)" NE "3"
+		Return
+
+	Echo If: Guest Info returned $(in_Station) not checked in - Checking in.
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+	
+	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleSTSRecord
+; ************************************************************************
+:HandleSTSRecord
+
+	; Handle DB Swap Requested.
+	if "$(in_ProcessCode)" EQ "1"
+		Echo If: PBX requested DB Swap.
+	if "$(in_ProcessCode)" EQ "1"
+		Call HandleDBSwap
+
+	; Handle Switch Failed.
+	if "$(in_ProcessCode)" EQ "2"
+		Echo If: PBX failed and requested DB Swap.
+	if "$(in_ProcessCode)" EQ "2"
+		Call HandleDBSwap
+
+	; Handle link release
+	if "$(in_ProcessCode)" EQ "5"
+		Echo If: PBX requested maintenance release of data link. 
+	if "$(in_ProcessCode)" EQ "5"
+		Call HandleLinkRelease
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleDBSwap
+; ************************************************************************
+:HandleDBSwap
+
+	; Start DB Swap
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS3F  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+	; End DB Swap
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS4F  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  HandleLinkRelease
+; ************************************************************************
+:HandleLinkRelease
+
+	// Generate Message Count
+	Call GetNextMsgCnt
+	JoinNibbles $(MsgCnt) "<#15>"
+	Assign MsgCnt "$(_G_RESULT)"
+
+	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS6F  <#3>"
+
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;	UTILITY FUNCTIONS
+; ************************************************************************
+
+
+; ************************************************************************
+;  GetNextMsgCnt
+; ************************************************************************
+:GetNextMsgCnt
+
+	; Calculate MsgCnt field.
+	GetNextAutoIncNumber MsgCntr
+	Assign MsgCnt "$(_G_RESULT)" % 10
+	Assign MsgCnt "$(MsgCnt)" + 2
+	
+//	Assign MsgCnt "$(_G_RESULT)"
+
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  IgnoreRecord
+;   Flag that the processing was successful and exit the script.
+; ************************************************************************
+:IgnoreRecord
+
+  FLAGPROCESSED OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  HandleOKAndExit
+;   Flag that the processing was successful and exit the script.
+; ************************************************************************
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  HandleFailedAndExit
+;   Flag that the processing has failed and exit the script.
+; ************************************************************************
+:HandleFailedAndExit
+
+  FLAGPROCESSED FAIL
+
+Exit
+; ************************************************************************

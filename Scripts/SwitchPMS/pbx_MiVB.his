@@ -1,0 +1,1122 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.8.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to Mitel MiVoice Business
+;
+;                                                               ph-200200
+;
+;  Modifications - AU - 07/08/2017 - 50.0.8.0
+;	* Changed VIP Codes to skip if the code is not a valid entry on the MiVB
+;
+;  Modifications - AU - 07/08/2017 - 50.0.7.0
+;	* Removed CHK0 from Checkin commands so we send less messages to the Mitel
+;
+;  Modifications - AU - 24/04/2017 - 50.0.6.0
+;	* Improved VIP codes
+;
+;  Modifications - AU - 08/03/2017 - 50.0.5.0
+;	* Added s_RSTUseSource to skip any logic and simply send the RST code we received
+;	  from the PMS if enabled
+;
+;  Modifications - AU - 25/06/2015 - 50.0.4.0
+;	* Added the ability to customise the Extension Facility name used in Suite Services
+;
+;  Modifications - AU - 25/06/2015 - 50.0.3.0
+;	* Added new option and support for VIP codes on Checkin, Update and Transfer
+;
+;  Modifications - AU - 25/03/2015 - 50.0.2.0
+;	* Updated Extension Length setting to work on incoming records
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 19/03/2013
+;	* Added support for DND events with an option in the INIT
+;
+;  Modifications - AU - 05/10/2012
+;	* Modified SendRecord section to improve how we react after receiving a NAK
+;	* Modified s_UseRST to default to YES.  This will need to be changed to NO if the
+;	  PBX is older than a 3300.
+;
+;  Modifications - AU - 27/04/2012
+;	* Added an option in the INIT for Suite Services, it looks for an Extension
+;	  Facility of "Suite" and will ignore the record if it doesn't exist
+;
+;  Modifications - AU - 03/04/2012
+;	* Modified all labels so that we wait 15 seconds before sending after receiving
+;	* Modified CheckIncoming so we process an event if we get an STX without an ENQ
+;	* Modified ReceiveRecord to allow for the above
+;
+;  Modifications - AU - 10/02/2012
+;	* Modified PORT_OPENED so that after 20 seconds of sleeping we empty the
+;	  input buffer and act if it is an ENQ
+;	* Modified SendRecord so that if we receive a NAK, we sleep for 1.5 seconds,
+;	  empty the input buffer and then act if it is an ENQ
+;	* Updated to use _EV_NAMEDISPLAY in all labels
+;
+;  Modifications - AU - 02/02/2011
+;	* Complete overhaul of the script presentation
+;	* Added functionality to allow Extra Guests to be added to an Extension
+;	* Added an option for Add Extra Guests disaled by default
+;	* Brought settings in-line with other scripts by prefixing with s_
+;	* Removed redundant checks and comments
+;	* Modified RoomTransfer so that it will use RST commands if enabled
+;	* Modified FINISHEDRECEIVING to exit rather than return when finished
+;	* Modified default Unbar RST number to 2 from 3 as per the specification
+;	* Added missing event labels
+;
+;  Modifications - AU - 09/08/2010
+;	* Modified ReceiveRecord to clear down old incoming variables
+;	* Modified CreateRSEvents to only create an event if the in_Status
+;	  variable is not blank
+;	* Modified QUITRECEIVING to read SkipProcessIncoming in ReceiveRecord
+;
+;  Modifications - AU - 10/06/2010
+;	* Modified ReceiveRecord section to clear the old RecType
+;	* Modified s_Connection variable query entry in INIT
+;	* Removed redundant Extension Checks
+;	* Removed redundant defined variables
+;	* Added an echo in PORT_OPENED before the sleep 20000
+;	* Modified INIT for Serial connections
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+define WorkTmp
+;
+define ExtnLen
+define NameLen
+;
+define f_LastChar
+define f_LastRec
+;
+define s_DoDND
+define s_DoExtraGuest
+define s_DoNames
+define s_DoMessageWaiting
+define s_DoWakeups
+define s_DoVIP
+define s_UseRST
+define s_RSTBarCOS
+define s_RSTUnbarCOS
+define s_RSTUseSource
+define s_Connection
+define s_SuiteServices
+define s_SuiteServicesFacility
+;
+define in_Extension
+define in_Status
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+; OPT: The following determines if we send Extra Guest Names to the Mitel.  "YES"
+;      Means that we add an additional name to a station if required,
+;      "NO" means we don't.
+Assign s_DoExtraGuest "NO"
+
+; OPT: We tend to send guest names to the Mitel.  If, for some reason,
+;      this is not necessary, change the parameter on the following line to
+;      "NO".
+Assign s_DoNames "YES"
+
+; OPT: The following determines if we send and receive message waiting Messages.
+;      "YES" Means that we turn on and off message waiting lights, "NO" means we don't.
+Assign s_DoMessageWaiting "NO"
+
+; OPT: The following determines if we send wakeups to the Mitel.  "YES"
+;      Means that we set wakeup calls, "NO" means we don't.
+Assign s_DoWakeups "NO"
+
+; OPT: The following determines if we send Do Not Disturb messages to the Mitel.
+;      "YES" Means that we send DND messages, "NO" means we don't.
+Assign s_DoDND "NO"
+
+; OPT: The following determines if we send VIP messages to the Mitel.
+;      "YES" Means that we send VIP messages, "NO" means we don't.
+Assign s_DoVIP "NO"
+
+; OPT: This is the length of the extensions we are using in the records
+;      between us and the Mitel.
+Assign ExtnLen "5"
+
+; OPT: This is the length of the names we are to send to the Mitel. Change
+;      the parameter here to change the length.
+Assign NameLen "20"
+
+; OPT: Set here whether we should use the new RST to set Class of Service
+;      or use the old method of checkout and checkin/set name.
+Assign s_UseRST "YES"
+
+; OPT: If using the new RST command then set here the Bar and Unbar class of
+;      service IDs as required. The defaults are Bar 0 and Unbar 2.
+Assign s_RSTBarCOS "0"
+Assign s_RSTUnbarCOS "2"
+
+; OPT: Enable this option to send the RST code we received from emulating a Mitel
+Assign s_RSTUseSource "NO"
+
+; OPT: If using Suite Services, enable it here.  In dirdefn you need to assign
+;      an Extension Facility of "Suite" to the Suite extension. If it is something
+;      other than "Suite: you can change it in the below setting
+Assign s_SuiteServices "NO"
+
+; OPT: If Suite Services is enabled and the extension facility isn't "Suite" you can
+;      customise it below
+Assign s_SuiteServicesFacility "Suite"
+
+; OPT: Choose either SERIAL or IP connection
+Assign s_Connection "IP"
+
+if "$(s_Connection)" NE "SERIAL"
+	Exit
+
+OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	StartWaitTimer2 1
+	Echo Db: Connection Established - Sleeping 20 seconds while the Mitel gets ready
+	Sleep 20000
+
+:PO_EmptyBuffer
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto PO_NoBuffer
+
+	Assign f_LastChar "$(_PORTCHARS)"
+
+	Goto PO_EmptyBuffer
+
+:PO_NoBuffer
+
+	if "$(f_LastChar)" EQ "<#5>"
+		StartWaitTimer2 15
+	if "$(f_LastChar)" EQ "<#5>"
+		Echo Rx: <#5>
+	if "$(f_LastChar)" EQ "<#5>"
+		Call SendACK
+	if "$(f_LastChar)" EQ "<#5>"
+		Exit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+	if "$(s_DoMessageWaiting)" NE "YES"
+		Goto IgnoreRecord
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	Assign WorkVal "0"
+	if "$(_EV_MWSTATE)" EQ "TRUE"
+		Assign WorkVal "1"
+
+	Assign SendRec "<#02>MW $(WorkVal) <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+	if "$(s_DoWakeups)" NE "YES"
+		Goto IgnoreRecord
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	if "$(_EV_WKACTION)" NE "SET"
+		Goto WK_Clear
+  
+	Assign SendRec "<#02>WKP<_EV_WKTIME:TIME:4:HHMM><_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	Goto HandleOKAndExit
+
+:WK_Clear
+
+	Assign SendRec "<#02>WKP    <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	Assign SendRec "<#02>CHK1 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoNames)" NE "YES"
+		Goto HandleOKAndExit
+
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoVIP)" NE "YES"
+		Goto Checkin_Complete
+
+	if "$(_EV_CIVIP)" GT "9"
+		Goto Checkin_Complete
+
+	if "$(_EV_CIVIP)" NE ""
+		Assign SendRec "<#02>VIP<_EV_CIVIP:TEXT:1:LJ,ZP>0<_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_CIVIP)" NE ""
+		Call SendRecord
+
+:Checkin_Complete
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+//	Check if we should be using RST Commands
+	if "$(s_UseRST)" EQ "YES"
+		Goto COS_RST
+
+	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign SendRec "<#02>CHK1 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Call SendRecord
+
+	if "$(s_DoNames)" NE "YES"
+		Goto HandleOKAndExit
+
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	Goto HandleOKAndExit
+
+:COS_RST
+
+	Assign WorkVal "$(s_RSTBarCOS)"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_RSTUnbarCOS)"
+
+	if "$(s_RSTUseSource)" EQ "YES"
+		Assign WorkVal "$(_EV_COSCOVERAGEPATH)"
+
+	Assign SendRec "<#02>RST<WorkVal:NUMBER:1:LJ,ZP> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(s_DoNames)" NE "YES"
+		Goto IgnoreRecord
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoVIP)" NE "YES"
+		Goto RoomUpdate_Complete
+
+	if "$(_EV_RUVIP)" GT "9"
+		Goto RoomUpdate_Complete
+
+	if "$(_EV_RUVIP)" NE ""
+		Assign SendRec "<#02>VIP<_EV_RUVIP:TEXT:1:LJ,ZP>0<_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_RUVIP)" NE ""
+		Call SendRecord
+
+:RoomUpdate_Complete
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Echo RT: Blank Source Extension for Event $(_EV_ID) - Skipping Checkout.
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RT_SkipCheckout
+
+	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+:RT_SkipCheckout
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Echo RT: Blank Destination Extension for Event $(_EV_ID) - Skipping Checkout.
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto HandleOKAndExit
+
+	if "$(s_UseRST)" EQ "YES"
+		Goto TR_RST
+
+	Assign SendRec "<#02>CHK0 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign SendRec "<#02>CHK1 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Call SendRecord
+
+	if "$(s_DoNames)" NE "YES"
+		Goto HandleOKAndExit
+
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoVIP)" NE "YES"
+		Goto RoomTransfer_Complete
+
+	if "$(_EV_TRVIP)" GT "9"
+		Goto RoomTransfer_Complete
+
+	if "$(_EV_TRVIP)" NE ""
+		Assign SendRec "<#02>VIP<_EV_TRVIP:TEXT:1:LJ,ZP>0<_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_TRVIP)" NE ""
+		Call SendRecord
+
+	Goto HandleOKAndExit
+
+:TR_RST
+
+	Assign SendRec "<#02>CHK1 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoNames)" EQ "YES"
+		Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(s_DoNames)" EQ "YES"
+		Call SendRecord
+
+	Assign WorkVal "$(s_RSTBarCOS)"
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_RSTUnbarCOS)"
+
+	Assign SendRec "<#02>RST<WorkVal:NUMBER:1:LJ,ZP> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(s_DoVIP)" NE "YES"
+		Goto RoomTransfer_Complete
+
+	if "$(_EV_TRVIP)" GT "9"
+		Goto RoomTransfer_Complete
+
+	if "$(_EV_TRVIP)" NE ""
+		Assign SendRec "<#02>VIP<_EV_TRVIP:TEXT:1:LJ,ZP>0<_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_TRVIP)" NE ""
+		Call SendRecord
+
+:RoomTransfer_Complete
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+	if "$(s_DoExtraGuest)" NE "YES"
+		Goto IgnoreRecord
+
+	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
+		Goto CheckIncoming
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
+	if "$(_EV_EGACTION)" EQ "ADD"
+		Goto EG_Add
+	if "$(_EV_EGACTION)" EQ "UPDATE"
+		Goto HandleOKAndExit
+	if "$(_EV_EGACTION)" EQ "DELETE"
+		Goto EG_Delete
+
+	Echo If: Unsupported _EV_EGACTION: "$(_EV_EGACTION)".
+	Goto IgnoreRecord
+
+:EG_Add
+
+	Assign SendRec "<#02>NAM1 <_EV_EGGUESTNAME:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+
+:EG_Delete
+
+	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign SendRec "<#02>CHK1 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Call SendRecord
+
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "$(s_DoDND)" NE "YES"
+		Goto IgnoreRecord
+
+	Assign WorkVal 0
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign WorkVal 1
+
+	Assign SendRec "<#02>DND$(WorkVal) <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	Assign SendRec "<#02>AREYUTHERE<#03>"
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto GETRECTYPE
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Goto ReceiveRecord
+
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+//	Send an ACK and clear old data
+	Call SENDACK
+
+	StartWaitTimer 10
+
+:AWAITRECSTART
+
+	Sleep 300
+
+	ReadFromPort 1
+
+//	Start our ReceivedRec with the character if we have received one
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(_PORTCHARS)"
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SkipProcessIncoming
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto AWAITRECSTART
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Rx: <#5>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto GETRECTYPE
+
+//	To get here we've received something else
+	Echo Rx: $(_PORTCHARS)
+
+Goto SkipProcessIncoming
+
+:GETRECTYPE
+
+	Assign _G_IN_RECORDFORMAT ""
+	Assign RecType ""
+	Assign in_Status ""
+	Assign in_Extension ""
+
+	Assign ReceivedRec "<#2>"
+
+	ReadFromPort 2 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "MW"
+		Call MWRECORD
+
+	if "$(_PORTCHARS)" EQ "ST"
+		Call STRECORD
+
+	StartWaitTimer 10
+
+:READINGREC
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+//	If it is an ETX we have finished
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Echo Rx: $(ReceivedRec)
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto FINISHEDRECEIVING
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout while reading record - record incomplete
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Rx: $(ReceivedRec)
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SkipProcessIncoming
+
+Goto READINGREC
+; ************************************************************************
+
+
+; ************************************************************************
+;  FINISHEDRECEIVING
+;    We now have a complete record, time to process it.
+:FINISHEDRECEIVING
+
+//	Send an ACK to the record
+	Call SENDACK
+
+	if "$(RecType)" EQ ""
+		Goto SkipProcessIncoming
+
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	parseInRecord
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto ReceiveError
+
+	if "$(RecType)" EQ "MW"
+		Call CreateMWEvent
+	if "$(RecType)" EQ "ST"
+		Call CreateRSEvent
+
+:SkipProcessIncoming
+
+	if "$(RecType)" NE "MW"
+		StartWaitTimer2 15
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MWRECORD
+;    Sets up the expected format for the message waiting record.
+:MWRECORD
+
+	Assign RecType "MW"
+
+	if "$(ExtnLen)" NE "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>MW <in_Status:NUMBER:1:LJ,SP> <in_Extension:TEXT:5:LJ,SP><#3>"
+	if "$(ExtnLen)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>MW <in_Status:NUMBER:1:LJ,SP> <in_Extension:TEXT:7:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  STRECORD
+;    Sets up the expected format for the room status record.
+:STRECORD
+
+	Assign RecType "ST"
+
+	if "$(ExtnLen)" NE "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:5:LJ,SP><#3>"
+	if "$(ExtnLen)" EQ "7"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:7:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CreateMWEvent
+;    Creates the message waiting event.
+:CreateMWEvent
+
+	if "$(s_DoMessageWaiting)" NE "YES"
+		Return
+
+	if "<in_Status:TEXT:1:>" EQ "0"
+		CreateMessageWaiting "$(in_Extension)" "FALSE"
+	if "<in_Status:TEXT:1:>" EQ "1"
+		CreateMessageWaiting "$(in_Extension)" "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CreateRSEvent
+;    Creates a room status event.
+:CreateRSEvent
+
+	if "$(in_Status)" NE ""
+		CreateRoomStatus "$(in_Extension)" "$(in_Status)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when an error is found in the formatting of the record.
+:ReceiveError
+
+	Echo Er: Error when parsing record - Record ignored.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Assign f_LastChar ""
+	Call SENDENQ
+
+	StartWaitTimer 10
+
+:WAITFORACKTOENQ
+
+	Sleep 200
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto WAITFORACKTOENQ
+
+	Echo Rx: $(_PORTCHARS)
+
+//	If it's an ACK
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto GOTACKTOENQ
+
+//	If it's a NAK
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Sleep 5000
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord_EmptyBuffer
+
+//	If it's an ENQ
+	if "$(_PORTCHARS)" EQ "<#5>"
+		StartWaitTimer2 5
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Call SendACK
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Exit
+
+	Goto WAITFORACKTOENQ
+
+:GOTACKTOENQ
+
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 10
+
+:WAITFORACKTOREC
+
+	Sleep 200
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+//	If it's a NAK
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Sleep 5000
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord_EmptyBuffer
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto GOTACKTOREC
+
+//	If it's an ENQ
+	if "$(_PORTCHARS)" EQ "<#5>"
+		StartWaitTimer2 5
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Call SendACK
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Exit
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	Goto WAITFORACKTOREC
+
+:GOTACKTOREC
+
+Return
+
+:SendRecord_EmptyBuffer
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_NoBuffer
+
+	Assign f_LastChar "$(_PORTCHARS)"
+
+	Goto SendRecord_EmptyBuffer
+
+:SendRecord_NoBuffer
+
+	if "$(f_LastChar)" NE ""
+		Echo Rx: $(f_LastChar)
+
+	if "$(f_LastChar)" EQ "<#5>"
+		StartWaitTimer2 5
+	if "$(f_LastChar)" EQ "<#5>"
+		Call SendACK
+	if "$(f_LastChar)" EQ "<#5>"
+		Exit
+
+	Assign f_LastRec "$(SendRec)"
+	Assign SendRec "<#02>AREYUTHERE<#03>"
+	Call SendRecord
+
+	Assign SendRec "$(f_LastRec)"
+
+Goto SendRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  SuiteServices
+;   This label is called when Suite Services are enabled for every record
+:SuiteServices
+
+	Assign WorkVal "<_EV_EXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_SuiteServicesFacility:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SENDENQ
+;   This label is called when we need to send an ENQ.
+:SENDENQ
+
+	Send <#5>
+	Echo Tx: <#5>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SENDACK
+;   This label is called when we need to send an ACK.
+:SENDACK
+
+	Send <#6>
+	Echo Tx: <#6>
+
+Return
+; ************************************************************************

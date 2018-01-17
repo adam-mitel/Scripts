@@ -1,0 +1,761 @@
+; Coded For: 50.0.4.0
+; Script Version: 50.3.5.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to our
+;  AvayaIPOfficeClientService
+;
+;                                                              AU-20120510
+;
+;  Modifications - AU - 2017-11-23 - 50.0.4.0
+;	* Added enhanced COS settings
+;	* Minimum HI now required is 50.3.5.0 for DND in COS
+;
+;  Modifications - AU - 2017-02-09 - 50.0.3.0
+;	* Resolved issue with DND always sending Barred command
+;
+;  Modifications - AU - 2016-05-11 - 50.0.2.0
+;	* Added a Room Status option to process Room Status events when
+;	  we are doing Room Status via Call Records
+;	* Added an Extension Facilities option to only process events
+;	  which match the desired facility. Used in multi IPO set ups.
+;	* Added support for DoNotDisturb
+;
+;  Modifications - AU - 2013-10-17 - 50.0.0.1
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+;
+define s_BarCOS
+define s_UnbarCOS
+define s_CS1COS
+define s_CS2COS
+define s_DNDBarCOS
+define s_DNDUnbarCOS
+define s_DNDCS1COS
+define s_DNDCS2COS
+define s_MatchExtensionFaciliy
+define s_ProcessRoomStatus
+define s_ProcessDND
+define s_ProcessEnhancedCOS
+;
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when we have a Call record to
+;   send.
+:INIT
+
+//	OPT: Set the Line Bar User Rights below (Case Sensitive)
+	Assign s_BarCOS "Barred"
+
+//	OPT: Set the Line Unbar User Rights below (Case Sensitive)
+	Assign s_UnbarCOS "Unbarred"
+
+//	OPT: Set whether we should send DND events to the IPO
+	Assign s_ProcessDND "FALSE"
+
+//	OPT: Set the DND Line Bar User Rights below (Case Sensitive)
+	Assign s_DNDBarCOS "BarredDND"
+
+//	OPT: Set the DND Line Unbar User Rights below (Case Sensitive)
+	Assign s_DNDUnbarCOS "UnbarredDND"
+
+//	OPT: Set whether we should send enhanced COS values based on CS1/CS2
+//	     coming from Opera
+	Assign s_ProcessEnhancedCOS "FALSE"
+
+//	OPT: Set the CS1 User Rights value below (Case Sensitive)
+	Assign s_CS1COS "Local"
+
+//	OPT: Set the CS2 User Rights value below (Case Sensitive)
+	Assign s_CS2COS "National"
+
+//	OPT: Set the DND CS1 User Rights value below (Case Sensitive)
+	Assign s_DNDCS1COS "LocalDND"
+
+//	OPT: Set the DND CS2 User Rights value below (Case Sensitive)
+	Assign s_DNDCS2COS "NationalDND"
+
+//	OPT: If we are processing Room Status events via Call Records then
+//	     this should be set to TRUE and this interface should scan the
+//	     internal call records. If it is not done by Call Records then
+//	     it should be FALSE
+	Assign s_ProcessRoomStatus "TRUE"
+
+//	OPT: If you only wish to process events for which match a specific
+//	     Extension Facility then set it below. If you wish to process
+//	     all events leave it blank
+	Assign s_MatchExtensionFaciliy ""
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+	if "$(s_ProcessRoomStatus)" NE "TRUE"
+		Goto IgnoreRecord
+
+	if "$(_EV_RSCODE)" NE ""
+		Echo If: [RS] Creating Room Status $(_EV_RSCODE) for $(_EV_ROOMNUMBER).
+	if "$(_EV_RSCODE)" NE ""
+		CreateRoomStatus "$(_EV_ROOMNUMBER)" "$(_EV_RSCODE)"
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	Echo If: [CI] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Call SendRecord
+
+	if "$(s_ProcessEnhancedCOS)" EQ "TRUE"
+		Goto Checkin_SkipCOS
+
+	Echo If: [CI] Setting COS to $(s_UnbarCOS) on $(_EV_EXTNNUMBER).
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(s_UnbarCOS)"
+	Call SendRecord
+
+:Checkin_SkipCOS
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	Echo If: [CO] Setting name to "Vacant $(_EV_ROOMNUMBER)" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"Vacant $(_EV_ROOMNUMBER)\""
+	Call SendRecord
+
+	Echo If: [CO] Setting COS to $(s_BarCOS) on $(_EV_EXTNNUMBER).
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(s_BarCOS)"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	Assign WorkVal ""
+
+	if "$(s_ProcessEnhancedCOS)" EQ "TRUE"
+		Goto ClassOfService_EnhancedCOS
+
+	if "$(_EV_COSDNDACTION)" EQ "DONOTDISTURB"
+		Goto ClassOfService_DND
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCOS)"
+
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_BarCOS)"
+
+	Goto ClassOfService_Send
+
+:ClassOfService_DND
+
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_DNDUnbarCOS)"
+
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_DNDBarCOS)"
+
+	Goto ClassOfService_Send
+
+:ClassOfService_EnhancedCOS
+
+	if "$(_EV_COSDNDACTION)" EQ "DONOTDISTURB"
+		Goto ClassOfService_EnhancedCOS_DND
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_BarCOS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_CS1COS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_CS2COS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_UnarCOS)"
+
+	Goto ClassOfService_Send
+
+:ClassOfService_EnhancedCOS_DND
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_DNDBarCOS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_DNDCS1COS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_DNDCS2COS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_DNDUnarCOS)"
+
+	Goto ClassOfService_Send
+
+:ClassOfService_Send
+
+	if "$(WorkVal)" EQ ""
+		Echo Er: Unable to calculate COS value on Event ID [$(_EV_ID]
+	if "$(WorkVal)" EQ ""
+		Goto IgnoreRecord
+
+	Echo If: [COS] Setting COS to $(WorkVal) on $(_EV_EXTNNUMBER).
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(WorkVal)"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	Echo If: [RU] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckout
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility_Source
+
+  	Echo If: [TR] Transferring extension $(_EV_EXTNNUMBER) to $(_EV_TRDESTEXTNNUMBER).
+
+	if "$(_EV_DDITRANSFER)" NE ""
+		Echo If: [TR] Removing DDI $(_EV_DDITRANSFER) from $(_EV_EXTNNUMBER).
+	if "$(_EV_DDITRANSFER)" NE ""
+		Assign SendRec "DID $(_EV_DDITRANSFER) $(_EV_EXTNNUMBER) CLEAR"
+	if "$(_EV_DDITRANSFER)" NE ""
+  		Call SendRecord
+
+	Echo If: [TR] Setting name to "Vacant $(_EV_ROOMNUMBER)" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"Vacant $(_EV_ROOMNUMBER)\""
+	Call SendRecord
+
+	Echo If: [TR] Setting COS to $(s_BarCOS) on $(_EV_EXTNNUMBER).
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(s_BarCOS)"
+	Call SendRecord
+
+:RoomTransfer_SkipCheckout
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckin
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility_Dest
+
+	Echo If: [TR] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "NAME $(_EV_TRDESTEXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Call SendRecord
+
+	Assign WorkVal ""
+
+	if "$(s_ProcessEnhancedCOS)" EQ "TRUE"
+		Goto RoomTransfer_EnhancedCOS
+
+	if "$(_EV_TRDNDACTION)" EQ "DONOTDISTURB"
+		Goto RoomTransfer_DND
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_UnbarCOS)"
+
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_BarCOS)"
+
+	Goto RoomTransfer_Send
+
+:RoomTransfer_DND
+
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_DNDUnbarCOS)"
+
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_DNDBarCOS)"
+
+	Goto RoomTransfer_Send
+
+:RoomTransfer_EnhancedCOS
+
+	if "$(_EV_TRDNDACTION)" EQ "DONOTDISTURB"
+		Goto RoomTransfer_EnhancedCOS_DND
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_BarCOS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_CS1COS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_CS2COS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_UnarCOS)"
+
+	Goto RoomTransfer_Send
+
+:RoomTransfer_EnhancedCOS_DND
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_DNDBarCOS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_DNDCS1COS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_DNDCS2COS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_DNDUnarCOS)"
+
+	Goto RoomTransfer_Send
+
+:RoomTransfer_Send
+
+	if "$(WorkVal)" EQ ""
+		Echo Er: Unable to calculate TR COS value on Event ID [$(_EV_ID]
+	if "$(WorkVal)" EQ ""
+		Goto RoomTransfer_DDI
+
+	Echo If: [TR] Setting COS to $(WorkVal) on $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "COS $(_EV_TRDESTEXTNNUMBER) $(WorkVal)"
+	Call SendRecord
+
+:RoomTransfer_DDI
+
+	if "$(_EV_DDITRANSFER)" NE ""
+		Echo If: [TR] Assigning DDI $(_EV_DDITRANSFER) on $(_EV_TRDESTEXTNNUMBER).
+	if "$(_EV_DDITRANSFER)" NE ""
+		Assign SendRec "DID $(_EV_DDITRANSFER) $(_EV_TRDESTEXTNNUMBER) SET"
+	if "$(_EV_DDITRANSFER)" NE ""
+  		Call SendRecord
+
+:RoomTransfer_SkipCheckin
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "$(s_ProcessDND)" NE "TRUE"
+		Goto IgnoreRecord
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Goto DoNotDisturb_On
+	if "$(_EV_DNDACTION)" NE "DONOTDISTURB"
+		Goto DoNotDisturb_Off
+
+:DoNotDisturb_On
+
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "$(s_DNDUnbarCOS)"
+	if "$(_EV_ALLOWOUTGOING)" NE "1"
+		Assign WorkVal "$(s_DNDBarCOS)"
+
+	Goto DoNotDisturb_Send
+
+:DoNotDisturb_Off
+
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "$(s_UnbarCOS)"
+	if "$(_EV_ALLOWOUTGOING)" NE "1"
+		Assign WorkVal "$(s_BarCOS)"
+
+	Goto DoNotDisturb_Send
+
+:DoNotDisturb_Send
+
+	Echo If: [DND] Setting COS to $(WorkVal) on $(_EV_EXTNNUMBER).
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(WorkVal)"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+	if "$(s_MatchExtensionFaciliy)" NE ""
+		Call CheckExtensionFacility
+
+	if "$(_EV_DDIACTION)" EQ "SET"
+		Goto DDI_Set
+	if "$(_EV_DDIACTION)" EQ "CLEAR"
+		Goto DDI_Clear
+
+	Echo If: [DDI] Unsupported DDI Action: "$(_EV_DDIACTION)"
+	Goto IgnoreRecord
+
+:DDI_Set
+
+	Echo If: [DDI] Assigning DDI $(_EV_DDI) to $(_EV_EXTNNUMBER).
+	Assign SendRec "DID $(_EV_DDI) $(_EV_EXTNNUMBER) SET"
+	Call SendRecord
+
+Goto HandleOKAndExit
+
+:DDI_Clear
+
+	Echo If: [DDI] Removing DDI $(_EV_DDI) from $(_EV_EXTNNUMBER).
+	Assign SendRec "DID $(_EV_DDI) $(_EV_EXTNNUMBER) CLEAR"
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Info: Received Heart Beat.
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Send $(SendRec)<#13><#10>
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 60
+	Assign ReceivedRec ""
+
+:SendRecord_WaitForACK
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Er: Received an ENQ when trying to send record
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotACK
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timed out waiting for ACK to record
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForACK
+
+:SendRecord_GotACK
+
+	Echo Rx: $(ReceivedRec)
+	Sleep 2000
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckExtensionFacility
+;   This label is called when we need to check if the extension matches
+;   the required Extension Facility
+:CheckExtensionFacility
+
+	ContainsStr "<s_MatchExtensionFaciliy:TEXT:255:UC>" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+
+:CheckExtensionFacility_Source
+
+	ContainsStr "<s_MatchExtensionFaciliy:TEXT:255:UC>" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomTransfer_SkipCheckout
+
+Return
+
+:CheckExtensionFacility_Dest
+
+	ContainsStr "<s_MatchExtensionFaciliy:TEXT:255:UC>" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

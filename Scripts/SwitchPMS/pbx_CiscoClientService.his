@@ -1,0 +1,781 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.3.0
+; ************************************************************************
+;
+;  This is the script for interfacing to a Cisco Call Manager via our
+;  TigerTMS Client Service.
+;
+;                                                              AU-20131028
+;
+;  Modifications - AU - 15/06/2015 - 50.0.3.0
+;	* Added directory user updates based on Extension Facilities
+;	  containing "Directory User"
+;
+;  Modifications - AU - 27/05/2015 - 50.0.2.0
+;	* Set Checkin and Transfer to clear the Idle URL if we are setting
+;	  it to stop clearing call history for checked in guests. Requires
+;	  50.0.10.0 of CiscoClientService
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define WorkVal
+;
+define BarCSS
+define UnbarCSS
+define LocalCSS
+define NationalCSS
+;
+define g_GuestName
+define g_UserRoom 
+define g_UserName
+define g_UserNameFirst
+define g_UserTitle
+;
+define s_DoEnhancedCSS
+define s_TotalNameLength
+define s_NameLength
+define s_UnbarOnCheckin
+define s_ResetOnCheckout
+define s_DoHardReset
+define s_DoNotDisturb
+define s_SetIdleURL
+define s_SetServicesURL
+define s_IdleURL
+define s_ServicesURL
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Assign the total name length here.  If you use the NamePadding
+//	     option in the INI, you must minus the total amount of letters
+//	     you used from 30 in this setting
+	Assign s_TotalNameLength "30"
+
+//	Leave this parameter alone
+	Assign s_NameLength $(s_TotalNameLength) - 5
+
+//	OPT: Assign the CSS names set in the Cisco CallManager
+	Assign BarCSS "Barred"
+	Assign UnbarCSS "Unbarred"
+	Assign LocalCSS "Local"
+	Assign NationalCSS "National"
+
+//	OPT: Set whether we need to send Local and National CSS values to
+//	     the Cisco CallManager.  This should only be enabled if the
+//	     PMS system supports it
+	Assign s_DoEnhancedCSS "FALSE"
+
+//	OPT: Set whether we want to Unbar the phone on Checkin.  This should
+//	     be enabled if we don't get a COS event from the PMS on Checkin
+	Assign s_UnbarOnCheckin "FALSE"
+
+//	OPT: Set whether we want to reset the phone on Checkout
+	Assign s_ResetOnCheckout "FALSE"
+
+//	OPT: Set whether we want to do a hard reset rather than a soft reset
+	Assign s_DoHardReset "FALSE"
+
+//	OPT: Set whether we want to process Do Not Disturb events
+	Assign s_DoNotDisturb "TRUE"
+
+//	OPT: Set whether we want to update the Idle URL on Checkin and Checkout
+	Assign s_SetIdleURL "FALSE"
+
+//	OPT: Set whether we want to update the Services URL on Checkin and Checkout
+	Assign s_SetServicesURL "FALSE"
+
+//	OPT: Set the Checkout Idle URL.  Do not include http://
+	Assign s_IdleURL "10.117.250.41/Cisco/ClearCallHistory.xml"
+
+//	OPT: Set the Services URL.  Do not include http://
+	Assign s_ServicesURL "10.117.250.41/Cisco/ClearCallHistory.xml"
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+	Goto IgnoreRecord
+
+	if "$(_EV_RSCODE)" NE ""
+		Echo If: [RS] Creating Room Status $(_EV_RSCODE) for $(_EV_ROOMNUMBER).
+	if "$(_EV_RSCODE)" NE ""
+		CreateRoomStatus "$(_EV_ROOMNUMBER)" "$(_EV_RSCODE)"
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+	if "$(_EV_CILANGCODE)" EQ ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_CILANGCODE)" NE ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_CILANGCODE:TEXT:2:AN>)"
+
+	Echo CI: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	Call SendRecord
+
+	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto CI_CheckCSS
+
+	if "$(_EV_LANGCODE)" EQ ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_NameLength):AN> (<_EV_LANGCODE:TEXT:2:AN>)"
+
+	Assign g_UserNameFirst "<_EV_INITIALS:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserTitle "<_EV_CITITLE:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserRoom "$(_EV_ROOMNUMBER)"
+
+	Echo CI: Setting directory user name for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPDIRNAMEUPDATE|$(_EV_EXTNNUMBER)|\"$(g_UserRoom)\"|\"$(g_UserName)\"|\"$(g_UserNameFirst)\"|\"$(g_UserTitle)\" "
+	Call SendRecord
+
+:CI_CheckCSS
+
+	if "$(s_UnbarOnCheckin)" NE "TRUE"
+		Goto CI_CheckIdleURL
+
+	Echo CI: Setting CSS to $(UnbarCSS) on $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(UnbarCSS)|"
+	Call SendRecord
+  
+:CI_CheckIdleURL
+
+	if "$(s_SetIdleURL)" NE "TRUE"
+		Goto CI_CheckServicesURL
+
+	Echo CI: Clearing Idle URL on $(_EV_EXTNNUMBER)
+	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)||0|"
+	Call SendRecord
+
+:CI_CheckServicesURL
+
+	if "$(s_SetServicesURL)" NE "TRUE"
+		Goto CI_Complete
+
+	Echo CI: Setting Services URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_ServicesURL)?Room=$(_EV_ROOMNUMBER)
+	Assign SendRec "SOAPSETSERVICESURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_ServicesURL)?Room=$(_EV_ROOMNUMBER)|"
+	Call SendRecord
+
+:CI_Complete
+
+	Echo CI: Checkin complete for $(g_GuestName) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+	Echo CO: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"Vacant $(_EV_ROOMNUMBER)\"|"
+	Call SendRecord
+
+	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto CO_CheckCSS
+
+	Assign g_UserName "Vacant"
+	Assign g_UserNameFirst " "
+	Assign g_UserTitle " "
+	Assign g_UserRoom "$(_EV_ROOMNUMBER)"
+
+	Echo CO: Clearing directory user name for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPDIRNAMEUPDATE|$(_EV_EXTNNUMBER)|\"$(g_UserRoom)\"|\"$(g_UserName)\"|\"$(g_UserNameFirst)\"|\"$(g_UserTitle)\" "
+	Call SendRecord
+
+:CO_CheckCSS
+
+	Echo CO: Setting CSS to "$(BarCSS)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(BarCSS)|"
+	Call SendRecord
+
+:CO_CheckReboot
+
+	if "$(s_ResetOnCheckout)" NE "TRUE"
+		Goto CO_CheckIdleURL
+
+	if "$(s_DoHardReset)" EQ "TRUE"
+		Echo CO: Starting a Hard Reset on $(_EV_EXTNNUMBER).
+	if "$(s_DoHardReset)" EQ "TRUE"
+		Assign SendRec "SOAPRESETPHONE|1|$(_EV_EXTNNUMBER)|TRUE|"
+	if "$(s_DoHardReset)" EQ "TRUE"    
+		Call SendRecord
+
+	if "$(s_DoHardReset)" NE "TRUE"
+		Echo CO: Starting a Soft Reset on $(_EV_EXTNNUMBER).
+	if "$(s_DoHardReset)" NE "TRUE"
+		Assign SendRec "SOAPRESETPHONE|1|$(_EV_EXTNNUMBER)|FALSE|"
+	if "$(s_DoHardReset)" NE "TRUE"
+		Call SendRecord
+
+:CO_CheckIdleURL
+
+	if "$(s_SetIdleURL)" NE "TRUE"
+		Goto CO_Complete
+
+	Echo CO: Setting Idle URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_IdleURL)
+	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_IdleURL)?Room=$(_EV_ROOMNUMBER)|120|"
+	Call SendRecord
+
+:CO_Complete
+
+	Echo CO: Checkout complete for $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(BarCSS)"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(UnbarCSS)"
+
+	if "$(s_DoEnhancedCSS)" NE "TRUE"
+		Goto COS_SkipEnhancedCSS
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(BarCSS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(LocalCSS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(NationalCSS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(UnbarCSS)"
+
+:COS_SkipEnhancedCSS
+
+	Echo COS: Setting CSS to "$(WorkVal)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(WorkVal)|"
+	Call SendRecord
+
+	Echo COS: Completed update of CSS $(WorkVal) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+	if "$(_EV_RULANGCODE)" EQ ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_RULANGCODE)" NE ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_RULANGCODE:TEXT:2:AN>)"
+
+	Echo RU: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	Call SendRecord
+
+	Echo RU: Completed name change to $(g_GuestName) on $(_EV_EXTNNUMBER).
+
+	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomUpdate_Done
+
+	if "$(_EV_LANGCODE)" EQ ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_NameLength):AN> (<_EV_LANGCODE:TEXT:2:AN>)"
+
+	Assign g_UserNameFirst "<_EV_INITIALS:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserTitle "<_EV_RUTITLE:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserRoom "$(_EV_ROOMNUMBER)"
+
+	Echo RU: Setting directory user name for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPDIRNAMEUPDATE|$(_EV_EXTNNUMBER)|\"$(g_UserRoom)\"|\"$(g_UserName)\"|\"$(g_UserNameFirst)\"|\"$(g_UserTitle)\" "
+	Call SendRecord
+
+:RoomUpdate_Done
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto TR_CheckoutCompleteNoEcho
+
+	Echo TR: Transfer from $(_EV_EXTNNUMBER) to $(_EV_TRDESTEXTNNUMBER).
+
+:TR_RetryName
+
+	Echo TR: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"Vacant $(_EV_ROOMNUMBER)\"|"
+	Call SendRecord
+
+	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto TR_RetryCOS
+
+	Assign g_UserName "Vacant"
+	Assign g_UserNameFirst " "
+	Assign g_UserTitle " "
+	Assign g_UserRoom "$(_EV_ROOMNUMBER)"
+
+	Echo TR: Clearing directory user name for Extension $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPDIRNAMEUPDATE|$(_EV_EXTNNUMBER)|\"$(g_UserRoom)\"|\"$(g_UserName)\"|\"$(g_UserNameFirst)\"|\"$(g_UserTitle)\" "
+	Call SendRecord
+
+:TR_RetryCOS
+
+	Echo TR: Set CSS to $(BarCSS) for $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(BarCSS)|"
+	Call SendRecord
+
+	if "$(s_ResetOnCheckout)" NE "TRUE"
+		Goto TR_CheckIdleURL
+
+	if "$(s_DoHardReset)" EQ "TRUE"
+		Echo CO: Starting a Hard Reset on $(_EV_EXTNNUMBER).
+	if "$(s_DoHardReset)" EQ "TRUE"
+		Assign SendRec "SOAPRESETPHONE|1|$(_EV_EXTNNUMBER)|TRUE|"
+	if "$(s_DoHardReset)" EQ "TRUE"    
+		Call SendRecord
+
+	if "$(s_DoHardReset)" NE "TRUE"
+		Echo CO: Starting a Soft Reset on $(_EV_EXTNNUMBER).
+	if "$(s_DoHardReset)" NE "TRUE"
+		Assign SendRec "SOAPRESETPHONE|1|$(_EV_EXTNNUMBER)|FALSE|"
+	if "$(s_DoHardReset)" NE "TRUE"
+		Call SendRecord
+
+:TR_CheckIdleURL
+
+	if "$(s_SetIdleURL)" NE "TRUE"
+		Goto TR_CheckoutComplete
+
+	Echo TR: Setting Idle URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_IdleURL)
+	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_IdleURL)?Room=$(_EV_ROOMNUMBER)|120|"
+	Call SendRecord
+
+:TR_CheckoutComplete
+
+	Echo TR: Checkout of $(_EV_EXTNNUMBER) Complete
+
+:TR_CheckoutCompleteNoEcho
+
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto TRSkip
+
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(BarCSS)"
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(UnbarCSS)"
+
+	if "$(s_DoEnhancedCSS)" NE "TRUE"
+		Goto TR_SkipEnhancedCSS
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(BarCSS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(LocalCSS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(NationalCSS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(UnbarCSS)"
+
+:TR_RetryDstName
+:TR_SkipEnhancedCSS
+
+	if "$(_EV_LANGCODE)" EQ ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_LANGCODE:TEXT:2:AN>)"
+
+	Echo TR: Setting name to "$(g_GuestName)" for Extension $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "SOAPSETNAME|1|$(_EV_TRDESTEXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	Call SendRecord
+
+	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto TR_RetryDstCOS
+
+	if "$(_EV_LANGCODE)" EQ ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_TotalNameLength):AN>"
+	if "$(_EV_LANGCODE)" NE ""
+		Assign g_UserName "<_EV_GUESTNAME:TEXT:$(s_NameLength):AN> (<_EV_LANGCODE:TEXT:2:AN>)"
+
+	Assign g_UserNameFirst "<_EV_INITIALS:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserTitle "<_EV_TRTITLE:TEXT:$(s_TotalNameLength):AN>"
+	Assign g_UserRoom "$(_EV_TRDESTROOMNUMBER)"
+
+	Echo TR: Setting directory user name for Extension $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "SOAPDIRNAMEUPDATE|$(_EV_TRDESTEXTNNUMBER)|\"$(g_UserRoom)\"|\"$(g_UserName)\"|\"$(g_UserNameFirst)\"|\"$(g_UserTitle)\" "
+	Call SendRecord
+
+:TR_RetryDstCOS
+
+	Echo TR: Set CSS to $(WorkVal) for $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "SOAPSETCOS|1|$(_EV_TRDESTEXTNNUMBER)|$(UnbarCSS)|"
+	Call SendRecord
+
+:TRSkip
+
+:TR_CICheckIdleURL
+
+	if "$(s_SetIdleURL)" NE "TRUE"
+		Goto TR_CICheckServicesURL
+
+	Echo TR: Clearing Idle URL on $(_EV_TRDESTEXTNNUMBER)
+	Assign SendRec "SOAPSETIDLEURL|$(_EV_TRDESTEXTNNUMBER)||0|"
+	Call SendRecord
+
+:TR_CICheckServicesURL
+
+	if "$(s_SetServicesURL)" NE "TRUE"
+		Goto TR_CheckinComplete
+
+	Echo TR: Setting Services URL on $(_EV_TRDESTEXTNNUMBER) to http:\/\/$(s_ServicesURL)?Room=$(_EV_TRDESTROOMNUMBER)
+	Assign SendRec "SOAPSETSERVICESURL|$(_EV_TRDESTEXTNNUMBER)|http:\/\/$(s_ServicesURL)?Room=$(_EV_TRDESTROOMNUMBER)|"
+	Call SendRecord
+
+:TR_CheckinComplete
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+	if "$(s_DoNotDisturb)" NE "TRUE"
+		Goto HandleOKAndExit
+
+	Assign WorkVal "FALSE"
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign WorkVal "TRUE"
+
+	Assign SendRec "SOAPSETDND|$(_EV_EXTNNUMBER)|$(WorkVal)|"
+	Call SendRecord
+
+	Echo DND: Completed setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Send $(SendRec)<#13><#10>
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 30
+
+:SendRecord_WaitForACK
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timed out waiting for ACK
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForACK
+
+	Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Echo Er: Received an NAK when trying to send record (Invalid Format?)
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Er: Received an ENQ when trying to send record
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForACK
+
+:SendRecord_GotACK
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
