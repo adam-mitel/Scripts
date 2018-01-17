@@ -1,0 +1,2923 @@
+; Coded For: 50.0.12.0
+; Script Version: 50.0.6.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a FIAS Protocol.
+;
+;							      pjh-20041216
+;
+;  Modifications - AU - 29/07/2016 - 50.0.6.0
+;	* Readded PCT at the request of Raymond Riley
+;	* Modified Call Posting to send the Sales Outlet as the Call Category
+;	  number so it can be controlled by carriers
+;
+;  Modifications - AU - 15/03/2015 - 50.0.5.0
+;	* Added option to use Millipence for posting for countries with high
+;	  currency values
+;	* Modified Call Posting to remove PCT
+;	* Modified Call Posting to use the following default Sales Outlets
+;	   - Removed on 29/07/2016 as now old information
+;
+;  Modifications - AU - 10/08/2014 - 50.0.4.0
+;	* Removed link records for Wakeup records as OnQ does not support them
+;
+;  Modifications - AU - 10/08/2014 - 50.0.3.0
+;	* Modified incoming records to support Guest Group
+;	* Added GG back in to GI and GC link records
+;
+;  Modifications - AU - 10/08/2014 - 50.0.2.0
+;	* Modified HandleLinkStart so that we reset our LinkAlive status to FALSE
+;	* Modified ReceiveRecord to allow for receiving an ETX instead of a pipe
+;	  at the end of an incoming record, primarily received by IDS
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;	* Changed Database Swap commands from using DND to GenericPassthrough
+;	* Modified CheckIncoming so we don't echo if _PORTCHARS is an ETX
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+define WorkTmp
+;
+define Date
+define Time
+define CallCharge
+define SalesOutlet
+;
+define f_Sending
+define f_LinkAlive
+define f_SentLinkRecords
+define f_WaitingForBalance
+define f_WaitingForPostAnswer
+define f_WaitingForCheckoutConfirm
+define f_WaitingForLA
+define f_WaitingForLinkStart
+define f_WaitingForSwapEnd
+define f_GotBalance
+define f_GotPostAnswer
+define f_GotCheckoutConfirm
+define f_GotSwapEnd
+define f_MessageHandled
+;
+define s_CombinedServicesImplimented
+define s_Connection
+define s_DoNotDisturb
+define s_MessageWaiting
+define s_ExtraGuest
+define s_NotGoingToRetry
+define s_HowLongToWait
+define s_HandleExtendedMessages
+define s_SendDefinableFields
+define s_GenesisTVInterface
+define s_TVRights
+define s_DDI
+define s_UseMillipence
+;
+define v_ACKRetries
+define v_FieldID
+define v_FieldData
+;
+define in_Date
+define in_Time
+define in_Room
+define in_GuestShare
+define in_GuestShareDest
+define in_Reservation
+define in_GuestID
+define in_GuestName
+define in_GuestFirstName
+define in_GuestTitle
+define in_GuestArrival
+define in_GuestDeparture
+define in_VIP
+define in_LangCode
+define in_GuestGroup
+define in_NoPost
+define in_TVRights
+define in_VideoRights
+define in_MinibarRights
+define in_Cfg0
+define in_Cfg1
+define in_Cfg2
+define in_Cfg3
+define in_Cfg4
+define in_Cfg5
+define in_Cfg6
+define in_Cfg7
+define in_Cfg8
+define in_Cfg9
+define in_EquipNumber
+define in_EquipStatus
+define in_EquipPool
+define in_Workstation
+define in_SwapFlag
+define in_SrcRoom
+define in_EquipSrcNumber
+define in_EquipSrcStatus
+define in_EquipSrcPool
+define in_COS
+define in_ClearText
+define in_DND
+define in_MsgLampStatus
+define in_PrinterPort
+define in_RoomStatus
+define in_VoiceMail
+define in_PostType
+define in_Duration
+define in_DialedDigits
+define in_TotalAmount
+define in_MBItem
+define in_MBCount
+define in_MeterPulse
+define in_PostingSequence
+define in_SalesOutlet
+define in_SubTotal1
+define in_Discount1
+define in_ServiceCharge
+define in_Tax1
+define in_Tax2
+define in_Tax3
+define in_AnswerStatus
+define in_MsgID
+define in_MsgText
+define in_BillDescription
+define in_BillItemAmount
+define in_BillDeptCode
+define in_BillFolioNum
+define in_BillDisplay
+define in_BillBalance
+;
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+// OPT: Set s_Connection type to IP or SERIAL.
+Assign s_Connection "IP"
+
+// OPT: Specify how long we should wait for responses to our records
+Assign s_HowLongToWait 10
+
+// OPT: Specify whether Combined Services are Implemented at this site
+Assign s_CombinedServicesImplimented "FALSE"
+
+// OPT: Specify whether a TV interface using the Genesis protocol
+Assign s_GenesisTVInterface "FALSE"
+
+// OPT: Specify whether we want to create and send TV events
+Assign s_TVRights "FALSE"
+
+// OPT: Specify whether we want to create and send Do Not Disturb events
+Assign s_DoNotDisturb "FALSE"
+
+// OPT: Specify whether we want to create and send DDI events
+Assign s_DDI "FALSE"
+
+// OPT: Specify whether we want to create and send Message Waiting events
+Assign s_MessageWaiting "FALSE"
+
+// OPT: Specify whether we want to create and send Extra Guest events
+Assign s_ExtraGuest "FALSE"
+
+// OPT: Set whether we want to handle extended guest messaging services
+Assign s_HandleExtendedMessages "FALSE"
+
+// OPT: Set whether we want to receive user definable fiends (A0-A9)
+Assign s_SendDefinableFields "FALSE"
+
+// OPT: Set this to true if we are not going to keep retrying
+Assign s_NotGoingToRetry "TRUE"
+
+// OPT: Set this to TRUE if it is required to send the posting amount in Millipence
+Assign s_UseMillipence "FALSE"
+
+if "$(s_Connection)" EQ "IP"
+	Exit
+
+OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;   Called when socket is connected. Gives you the opportunity to send
+;   any messages to start the connection.
+:PORT_OPENED
+
+Echo If: Connection established, Resetting LinkAlive and SendLinkRecords to false.
+
+:PO_SkipEcho
+
+Assign f_LinkAlive "FALSE"
+Assign f_SentLinkRecords "FALSE"
+Assign f_WaitingForBalance "FALSE"
+Assign f_WaitingForPostAnswer "FALSE"
+Assign f_WaitingForCheckoutConfirm "FALSE"
+Assign f_WaitingForLinkStart "TRUE"
+Assign f_WaitingForLA "FALSE"
+Assign f_WaitingForSwapEnd "FALSE"
+Assign f_GotBalance "FALSE"
+Assign f_GotPostAnswer "FALSE"
+Assign f_GotCheckoutConfirm "FALSE"
+Assign f_GotSwapEnd "FALSE"
+
+QueryPortOpen
+if "$(_G_RESULT)" NE "TRUE"
+	Echo If: In PORT_OPENED but the port is not Open - Restarting port
+if "$(_G_RESULT)" NE "TRUE"
+	Goto RestartPort
+
+StartWaitTimer 10
+
+:PO_WaitForLS
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto PO_NotGotLS
+
+Call CheckIncoming
+
+Goto PO_WaitForLS
+
+:PO_NotGotLS
+
+if "$(f_LinkAlive)" EQ "TRUE"
+	Goto PO_GotLS
+
+Echo If: Did not receive LS within 10 seconds, sending LS to start the link.
+
+Call DoLinkStart
+
+StartWaitTimer 10
+
+:PO_WaitForLS_2
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto PO_NotGotLS_2
+
+Call CheckIncoming
+
+Goto PO_WaitForLS_2
+
+:PO_NotGotLS_2
+
+if "$(f_LinkAlive)" EQ "TRUE"
+	Goto PO_GotLS
+
+Goto RestartPort
+
+:PO_GotLS
+
+// We got the LS so we should be up and running.
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;   Called at program start-up.  Gives you the opportunity to send a link
+;   termination message.
+:SHUTDOWN
+
+Call DoLinkStop
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+Assign SalesOutlet "$(_EV_CALLCAT)"
+
+if "$(s_UseMillipence)" EQ "TRUE"
+	Assign CallCharge "$(_EV_CALLCHARGEMILLIPENCE)"
+if "$(s_UseMillipence)" NE "TRUE"
+	Assign CallCharge "$(_EV_CALLCHARGEPENCE)"
+
+Echo If: Guest Call Record Info - Room: $(_EV_ROOMNUMBER) - Date: <_EV_CALLDATE:DATE:6:YYMMDD> - Time: <_EV_CALLTIME:TIME:6:HHMMSS> - ID: $(_EV_ID)
+
+Assign SendRec "PS|DA<_EV_CALLDATE:DATE:6:YYMMDD>|TI<_EV_CALLTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PCT|DD$(_EV_CALLDIALLEDDIGITS)|DU<_EV_CALLDURATION:TIME:6:HHMMSS>|TA$(CallCharge)|WS1|SO$(SalesOutlet)|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForPostAnswer "TRUE"
+Assign f_GotPostAnswer "FALSE"
+
+Call SendRecord
+
+:CR_WaitForAnswer
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto CR_Timeout
+
+if "$(f_GotPostAnswer)" EQ "TRUE"
+	Goto CR_GotAnswer
+
+Sleep 100
+
+Goto CR_WaitForAnswer
+
+:CR_GotAnswer
+
+// Reset flags.
+Assign f_WaitingForPostAnswer "FALSE"
+Assign f_GotPostAnswer "FALSE"
+
+// Check if the Posting was successful
+
+if "$(in_AnswerStatus)" EQ "OK"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "UR"
+	Echo Db: The PS record was refused.  Skipping the event.
+if "$(in_AnswerStatus)" EQ "UR"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "RY"
+	Echo Db: PMS requested we retry the PS record.  Retrying in 5 seconds.
+if "$(in_AnswerStatus)" EQ "RY"
+	Sleep 5000
+if "$(in_AnswerStatus)" EQ "RY"
+	Goto CallRecord
+
+if "$(in_AnswerStatus)" EQ "NA"
+	Echo Db: PMS is currently running a Night Audit.  Retrying the PS record in 15 seconds.
+if "$(in_AnswerStatus)" EQ "NA"
+	Sleep 15000
+if "$(in_AnswerStatus)" EQ "NA"
+	Goto CallRecord
+
+Echo Db: Unrecognised Answer Status: "$(in_AnswerStatus)"
+Goto HandleOKAndExit
+
+:CR_Timeout
+
+Echo Er: Timeout waiting for Posting answer...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+Assign SendRec "RE|RN$(_EV_ROOMNUMBER)|RS$(_EV_RSCODE)|"
+
+Assign WorkVal "$(_EV_RSMAIDID)"
+if "$(_EV_RSMAIDID)" EQ "001"
+	Assign WorkVal ""
+
+if "$(WorkVal)" NE ""
+	Assign SendRec "$(SendRec)ID$(WorkVal)|"
+
+Assign SendRec "$(SendRec)<#3>"
+
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort	
+
+if "$(_EV_MBITEMCODE)" NE "9999"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTM|MA$(_EV_MBITEMCODE)|M#$(_EV_MBITEMQUANTITY)|SO2|<#3>"
+if "$(_EV_MBITEMCODE)" EQ "9999"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO3|<#3>"
+if "$(_EV_MBDESCRIPTION)" EQ "Internet Charge"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO3|<#3>"
+if "$(_EV_MBDESCRIPTION)" EQ "Television Charge"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTTelevision Charge|SO7|<#3>"
+	
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForPostAnswer "TRUE"
+Assign f_GotPostAnswer "FALSE"
+
+Call SendRecord
+
+:MB_WaitForAnswer
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto MB_Timeout
+
+if "$(f_GotPostAnswer)" EQ "TRUE"
+	Goto MB_GotAnswer
+
+Sleep 100
+
+Goto MB_WaitForAnswer
+
+:MB_GotAnswer
+
+// Reset flags.
+Assign f_WaitingForPostAnswer "FALSE"
+Assign f_GotPostAnswer "FALSE"
+
+// Check if the Posting was successful
+
+if "$(in_AnswerStatus)" EQ "OK"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "UR"
+	Echo Db: The PS record was refused.  Skipping the event.
+if "$(in_AnswerStatus)" EQ "UR"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "RY"
+	Echo Db: PMS requested we retry the PS record.  Retrying in 5 seconds.
+if "$(in_AnswerStatus)" EQ "RY"
+	Sleep 5000
+if "$(in_AnswerStatus)" EQ "RY"
+	Goto Minibar
+
+if "$(in_AnswerStatus)" EQ "NA"
+	Echo Db: PMS is currently running a Night Audit.  Retrying the PS record in 15 seconds.
+if "$(in_AnswerStatus)" EQ "NA"
+	Sleep 15000
+if "$(in_AnswerStatus)" EQ "NA"
+	Goto Minibar
+
+Echo Db: Unrecognised Answer Status: "$(in_AnswerStatus)"
+Goto HandleOKAndExit
+
+:MB_Timeout
+
+Echo Er: Timeout waiting for Posting answer...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+if "$(s_MessageWaiting)" NE "TRUE"
+	Goto IgnoreRecord
+
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+if "$(_EV_MWCFGFIELD_0)" EQ "XM"
+	Goto MessageWaiting_XM
+if "$(_EV_MWCFGFIELD_0)" EQ "XD"
+	Goto MessageWaiting_XD
+
+if "$(_EV_MWSTATE)" EQ "TRUE"
+	Assign SendRec "RE|RN$(_EV_ROOMNUMBER)|VMY|<#3>
+if "$(_EV_MWSTATE)" NE "TRUE"
+	Assign SendRec "RE|RN$(_EV_ROOMNUMBER)|VMN|<#3>
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit
+
+:MessageWaiting_XM
+
+if "$(s_HandleExtendedMessages)" NE "TRUE"
+	Goto IgnoreRecord
+
+Assign SendRec XM|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:4:HHMM>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|"
+
+Assign SendRec "$(SendRec)<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit
+
+:MessageWaiting_XD
+
+if "$(_EV_MWMESSAGEID)" EQ ""
+	Echo Db: No Message ID on Delete Message Event ID $(_EV_ID).
+if "$(_EV_MWMESSAGEID)" EQ ""
+	Goto IgnoreRecord
+
+Assign SendRec XD|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:4:HHMM>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|MI$(_EV_MWMESSAGEID)|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+if "$(_EV_WKACTION)" EQ "SET"
+	Goto WK_Set
+if "$(_EV_WKACTION)" EQ "CLEAR"
+	Goto WK_Clear
+if "$(_EV_WKACTION)" EQ "CLEARALL"
+	Goto WK_ClearAll
+if "$(_EV_WKACTION)" EQ "DELIVERED"
+	Goto WK_Delivered
+if "$(_EV_WKACTION)" EQ "FAILED"
+	Goto WK_Failed
+
+Goto IgnoreRecord
+
+:WK_Set
+
+Assign SendRec "WR|RN$(_EV_ROOMNUMBER)|DA<_EV_WKDATE:DATE:6:YYMMDD>|TI<_EV_WKTIME:TIME:6:HHMMSS>|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit	
+
+:WK_Clear
+
+Assign SendRec "WC|RN$(_EV_ROOMNUMBER)|DA<_EV_WKDATE:DATE:6:YYMMDD>|TI<_EV_WKTIME:TIME:6:HHMMSS>|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit	
+
+:WK_ClearAll
+
+Assign SendRec "WC|RN$(_EV_ROOMNUMBER)|DA|TI|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit	
+
+:WK_Delivered
+
+Assign SendRec "WA|RN$(_EV_ROOMNUMBER)|DA<_EV_WKDATE:DATE:6:YYMMDD>|TI<_EV_WKTIME:TIME:6:HHMMSS>|ASOK|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit	
+
+:WK_Failed
+
+Assign SendRec "WA|RN$(_EV_ROOMNUMBER)|DA<_EV_WKDATE:DATE:6:YYMMDD>|TI<_EV_WKTIME:TIME:6:HHMMSS>|ASNR|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit	
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   The script is executed from this label when we have a bill enquiry
+;   event to send.
+:BillEnquiry
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+Assign SendRec "XR|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|<#3>
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForBalance "TRUE"
+Assign f_GotBalance "FALSE"
+
+Call SendRecord
+
+:BillEnquiry_WaitForBalance
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto BillEnquiry_Timeout
+
+if "$(f_GotBalance)" EQ "TRUE"
+	Goto BillEnquiry_GotBalance
+
+Sleep 100
+
+Goto BillEnquiry_WaitForBalance
+
+:BillEnquiry_GotBalance
+
+Assign f_WaitingForBalance "FALSE"
+Assign f_GotBalance "FALSE"
+
+Goto HandleOKAndExit
+
+:BillEnquiry_Timeout
+
+Echo Er: Timeout waiting for BillEnquiry response...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   The script is executed from this label when we have an express 
+;   checkout event to send.
+:ExpressCheckout
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+// If we need to send a bill enquiry first then comment out the following line
+// NOTE: This should NOT be done in a production environment!
+Goto ExpressCheckout_GotBalance
+
+// First send a Bill Enquiry and wait for the Balance to come back. - Uncomment when testing!
+Assign SendRec "XR|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|<#3>
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForBalance "TRUE"
+Assign f_GotBalance "FALSE"
+
+Call SendRecord
+
+:ExpressCheckout_WaitForBalance
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto ExpressCheckout_Timeout
+
+if "$(f_GotBalance)" EQ "TRUE"
+	Goto ExpressCheckout_GotBalance
+
+Sleep 100
+
+Goto ExpressCheckout_WaitForBalance
+
+:ExpressCheckout_GotBalance
+
+// Reset flags.
+Assign f_WaitingForBalance "FALSE"
+Assign f_GotBalance "FALSE"
+
+// Now send the Remote Checkout command with the balance we just received.
+Assign SendRec "XC|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|BA$(in_BillBalance)|<#3>
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaitTimer 10
+
+Assign f_WaitingForCheckoutConfirm "TRUE"
+Assign f_GotCheckoutConfirm "FALSE"
+
+Call SendRecord
+
+:ExpressCheckout_WaitForConfirm
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto ExpressCheckout_Timeout
+
+if "$(f_GotCheckoutConfirm)" EQ "TRUE"
+	Goto ExpressCheckout_WaitForConfirm
+
+Sleep 100
+
+Goto ExpressCheckout_WaitForConfirm
+
+:ExpressCheckout_Done
+
+// Reset flags
+Assign f_WaitingForCheckoutConfirm "FALSE"
+Assign f_GotCheckoutConfirm "FALSE"
+
+Goto HandleOKAndExit
+
+:ExpressCheckout_Timeout
+
+Echo Er: Timeout waiting for ExpressCheckout reply...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   The script is executed from this label when we have a Bill Response 
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   The script is executed from this label when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TvRights
+;   The script is executed from this label when we have a TV Rights 
+;   event to send.
+:TvRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   The script is executed from this label when we have a Call Package 
+;   event to send.
+:CallPackage
+
+if "$(s_CombinedServicesImplimented)" NE "TRUE"
+	Goto IgnoreRecord
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+if "$(_EV_CPISCLEARDOWN)" EQ "TRUE"
+	CreateRoomUpdate "$(_EV_ROOMNUMBER)" "" "" "" "" "" "" "" "TRUE" "-1"
+if "$(_EV_CPISCLEARDOWN)" EQ "TRUE"
+	Goto IgnoreRecord
+
+if "$(_EV_CPITEMID)" EQ "101"
+	Goto IgnoreRecord
+if "$(_EV_CPITEMID)" EQ "102"
+	Goto IgnoreRecord
+
+Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_CPCOST)|CT$(_EV_CPDESC)|SO$(_EV_CPITEMID)|<#3>"
+
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForPostAnswer "TRUE"
+Assign f_GotPostAnswer "FALSE"
+
+Call SendRecord
+
+:CP_WaitForAnswer
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto CP_Timeout
+
+if "$(f_GotPostAnswer)" EQ "TRUE"
+	Goto CP_GotAnswer
+
+Sleep 100
+
+Goto CP_WaitForAnswer
+
+:CP_GotAnswer
+
+// Reset flags.
+Assign f_WaitingForPostAnswer "FALSE"
+Assign f_GotPostAnswer "FALSE"
+
+// Check if the Posting was successful
+
+if "$(in_AnswerStatus)" EQ "OK"
+	Goto CP_SendingComplete
+
+if "$(in_AnswerStatus)" EQ "UR"
+	Echo Db: The PS record was refused.  Skipping the event.
+if "$(in_AnswerStatus)" EQ "UR"
+	Goto CP_SendingComplete
+
+if "$(in_AnswerStatus)" EQ "RY"
+	Echo Db: PMS requested we retry the PS record.  Retrying in 5 seconds.
+if "$(in_AnswerStatus)" EQ "RY"
+	Sleep 5000
+if "$(in_AnswerStatus)" EQ "RY"
+	Goto CallPackage
+
+if "$(in_AnswerStatus)" EQ "NA"
+	Echo Db: PMS is currently running a Night Audit.  Retrying the PS record in 15 seconds.
+if "$(in_AnswerStatus)" EQ "NA"
+	Sleep 15000
+if "$(in_AnswerStatus)" EQ "NA"
+	Goto CallPackage
+
+Echo Db: Unrecognised Answer Status: "$(in_AnswerStatus)"
+Goto HandleOKAndExit
+
+:CP_Timeout
+
+Echo Er: Timeout waiting for Posting answer...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
+
+:CP_SendingComplete
+
+Assign WorkVal ""
+
+if "$(_EV_CPITEMID)" EQ "4"
+	Assign WorkVal "24HPK1"
+if "$(_EV_CPITEMID)" EQ "5"
+	Assign WorkVal "24HPK2"
+if "$(_EV_CPITEMID)" EQ "6"
+	Assign WorkVal "24HPK2"
+
+CreateRoomUpdate "$(_EV_ROOMNUMBER)" "" "" "" "" "" "" "" "TRUE" "$(WorkVal)"
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   The script is executed from this label when we have a Generic 
+;   Passthrough event to send.
+:GenericPassthrough
+
+if "$(_EV_GPTMSGTYPE)" NE "DatabaseSwap"
+	Goto IgnoreRecord
+
+if "$(_EV_GPTCFGFIELD_1)" NE "Request"
+	Goto IgnoreRecord
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto CheckIncoming
+
+Assign SendRec "DR|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   The script is executed from this label periodically by the program
+:PeriodicCheck
+
+//	If the link is not alive - reset the connection
+	if "$(f_LinkAlive)" NE "TRUE"
+		Goto RestartPort
+
+	Call GetDateTime
+
+	Assign SendRec "LA|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;	Execution is periodically carried out from here by the program to
+;	check for incoming data during idle times.
+:CheckIncoming
+
+	Assign f_Sending "FALSE"
+
+	ReadFromPort 1
+
+//	If we have received an ENQ then we have missed a record.
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Rx: <#5>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Tx: <#21>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Send <#21>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Exit
+
+//	If we have received an STX then we need to set up to receive a record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	If we are waiting for a reply we need to return.
+	if "$(f_WaitingForCheckoutConfirm)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForPostAnswer)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForBalance)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForLinkStart)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForLA)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForSwapEnd)" EQ "TRUE"
+		Return
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Exit
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;	This label is called when we have a record to receive.
+:ReceiveRecord
+
+StartWaitTimer2 30
+
+// Clear out old field data.
+Call ClearFieldData
+
+// Read 2 chars, this is the record type.
+ReadFromPort 2 2
+
+Assign RecType "$(_PORTCHARS)"
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+// Read 1 char, this is the | symbol following the record type.
+ReadFromPort 1 2
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:ReadNextRecordField
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+// Read next char from port. This should be the first char of the Field ID or an ETX.
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ ""
+	Goto ReadNextRecordField
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+Assign v_FieldID "$(_PORTCHARS)"
+
+// if we have an ETX then we are at the end of the record and we need to read the BCC.
+if "$(_PORTCHARS)" EQ "<#3>"
+	StartWaitTimer2 2
+if "$(_PORTCHARS)" EQ "<#3>"
+	Goto ReadBCC
+
+:ReadFieldID
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+// Read next char from port. This should be the second char of the Field ID
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ ""
+	Goto ReadFieldID
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+Assign v_FieldID "$(v_FieldID)$(_PORTCHARS)"
+
+if "$(v_FieldID)" EQ "MT"
+	Call HandleXT_Check
+
+// Clear field data
+Assign v_FieldData ""
+
+:ReadFieldData
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" EQ "|"
+	Call ProcessField
+if "$(_PORTCHARS)" EQ "|"
+	Goto ReadNextRecordField
+
+if "$(_PORTCHARS)" EQ "<#3>"
+	Call ProcessField
+if "$(_PORTCHARS)" EQ "<#3>"
+	StartWaitTimer2 2
+if "$(_PORTCHARS)" EQ "<#3>"
+	Goto ReadBCC
+
+if "$(_PORTCHARS)" NE ""
+	Assign v_FieldData "$(v_FieldData)$(_PORTCHARS)"
+
+if "$(s_Connection)" EQ "SERIAL"
+	Sleep 50
+
+Goto ReadFieldData
+
+:ReadBCC
+
+// Skip BCC if we are on IP
+if "$(s_Connection)" EQ "IP"
+	Goto FinishedReceiving
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE ""
+	Goto FinishedReceiving
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto FinishedReceiving
+
+Goto ReadBCC
+
+:FinishedReceiving
+
+Echo Rx: $(ReceivedRec)
+
+// Skip ACK if we are on IP
+if "$(s_Connection)" EQ "IP"
+	Goto SkipSendingACK
+
+Echo Tx: <#6>
+Send <#6>
+
+:SkipSendingACK
+
+if "$(RecType)" EQ "LC"
+	Call HandleLinkConfiguration
+
+if "$(RecType)" EQ "LS"
+	Call HandleLinkStart
+
+if "$(RecType)" EQ "LA"
+	Call HandleLinkAlive
+
+if "$(RecType)" EQ "LE"
+	Call HandleLinkStop
+
+if "$(RecType)" EQ "GI"
+	Call HandleGI
+
+if "$(RecType)" EQ "GO"
+	Call HandleGO
+
+if "$(RecType)" EQ "GC"
+	Call HandleGC
+
+if "$(RecType)" EQ "RE"
+	Call HandleRE
+
+if "$(RecType)" EQ "WR"
+	Call HandleWR
+
+if "$(RecType)" EQ "WC"
+	Call HandleWC
+
+if "$(RecType)" EQ "XB"
+	Call HandleXB
+
+if "$(RecType)" EQ "XI"
+	Call HandleXI
+
+if "$(RecType)" EQ "XC"
+	Call HandleXC
+
+if "$(RecType)" EQ "XL"
+	Call HandleXL
+
+if "$(RecType)" EQ "XT"
+	Call HandleXT
+
+if "$(RecType)" EQ "XD"
+	Call HandleXD
+
+if "$(RecType)" EQ "PA"
+	Call HandlePA
+
+if "$(RecType)" EQ "DS"
+	Call HandleDS
+
+if "$(RecType)" EQ "DE"
+	Call HandleDE
+
+// If we were sending, return back to SendRecord.
+if "$(f_Sending)" EQ "TRUE"
+	Return
+
+// If we are waiting for a reply we need to return.
+if "$(f_WaitingForCheckoutConfirm)" EQ "TRUE"
+	Return
+if "$(f_WaitingForPostAnswer)" EQ "TRUE"
+	Return
+if "$(f_WaitingForBalance)" EQ "TRUE"
+	Return
+if "$(f_WaitingForLinkStart)" EQ "TRUE"
+	Return
+if "$(f_WaitingForSwapEnd)" EQ "TRUE"
+	Return
+
+Exit
+
+:ReceiveRecord_Timeout
+
+Echo Er: Timeout while receiving record
+Echo Rx: $(ReceivedRec)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessField
+;	Store the FieldData in the correct variable.
+:ProcessField
+
+if "$(v_FieldID)" EQ "DA"
+	Assign in_Date "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "TI"
+	Assign in_Time "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "RN"
+	Assign in_Room "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GS"
+	Assign in_GuestShare "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "G#"
+	Assign in_Reservation "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "G#"
+	Assign in_GuestID "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GN"
+	Assign in_GuestName "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GF"
+	Assign in_GuestFirstName "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GT"
+	Assign in_GuestTitle "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GA"
+	Assign in_GuestArrival "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GD"
+	Assign in_GuestDeparture "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GV"
+	Assign in_VIP "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GL"
+	Assign in_LangCode "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "GG"
+	Assign in_GuestGroup "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "NP"
+	Assign in_NoPost "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "TV"
+	Assign in_TVRights "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "VR"
+	Assign in_VideoRights "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "MR"
+	Assign in_MinibarRights "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A0"
+	Assign in_Cfg0 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A1"
+	Assign in_Cfg1 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A2"
+	Assign in_Cfg2 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A3"
+	Assign in_Cfg3 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A4"
+	Assign in_Cfg4 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A5"
+	Assign in_Cfg5 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A6"
+	Assign in_Cfg6 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A7"
+	Assign in_Cfg7 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A8"
+	Assign in_Cfg8 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A9"
+	Assign in_Cfg9 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "EN"
+	Assign in_EquipNumber "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "ES"
+	Assign in_EquipStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "EP"
+	Assign in_EquipPool "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "WS"
+	Assign in_Workstation "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "SF"
+	Assign in_SwapFlag "TRUE"
+
+if "$(v_FieldID)" EQ "RO"
+	Assign in_SrcRoom "$(v_FieldData)"
+if "$(v_FieldID)" EQ "RO"
+	Assign in_GuestShareDest "$(in_GuestShare)"
+
+if "$(v_FieldID)" EQ "EO"
+	Assign in_EquipSrcNumber "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "ET"
+	Assign in_EquipSrcStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "EI"
+	Assign in_EquipSrcPool "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "CS"
+	Assign in_COS "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "CT"
+	Assign in_ClearText "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "DN"
+	Assign in_DND "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "ML"
+	Assign in_MsgLampStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "PP"
+	Assign in_PrinterPort "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "RS"
+	Assign in_RoomStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "VM"
+	Assign in_VoiceMail "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "PT"
+	Assign in_PostType "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "DU"
+	Assign in_Duration "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "DD"
+	Assign in_DialedDigits "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "TA"
+	Assign in_TotalAmount "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "MA"
+	Assign in_MBItem "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "M#"
+	Assign in_MBCount "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "MP"
+	Assign in_MeterPulse "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "P#"
+	Assign in_PostingSequence "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "SO"
+	Assign in_SalesOutlet "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "S1"
+	Assign in_SubTotal1 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "D1"
+	Assign in_Discount1 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "SC"
+	Assign in_ServiceCharge "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "T1"
+	Assign in_Tax1 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "T2"
+	Assign in_Tax2 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "T3"
+	Assign in_Tax3 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "AS"
+	Assign in_AnswerStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "MI"
+	Assign in_MsgID "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "MT"
+	Assign in_MsgText "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "BD"
+	Assign in_BillDescription "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "BI"
+	Assign in_BillItemAmount "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "DC"
+	Assign in_BillDeptCode "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "F#"
+	Assign in_BillFolioNum "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "FD"
+	Assign in_BillDisplay "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "BA"
+	Assign in_BillBalance "$(v_FieldData)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClearFieldData
+;	Clear out all the data from the fields otherwise we don't know if the data
+;	in the field is from this record or the next.
+:ClearFieldData
+
+Assign in_Date ""
+Assign in_Time ""
+Assign in_Room ""
+Assign in_GuestShare ""
+Assign in_GuestShareDest ""
+Assign in_Reservation ""
+Assign in_GuestName ""
+Assign in_GuestFirstName ""
+Assign in_GuestTitle ""
+Assign in_GuestArrival ""
+Assign in_GuestDeparture ""
+Assign in_VIP ""
+Assign in_LangCode ""
+Assign in_GuestGroup ""
+Assign in_NoPost ""
+Assign in_TVRights ""
+Assign in_VideoRights ""
+Assign in_MinibarRights ""
+Assign in_Cfg0 "-1"
+Assign in_Cfg1 "-1"
+Assign in_Cfg2 "-1"
+Assign in_Cfg3 "-1"
+Assign in_Cfg4 "-1"
+Assign in_Cfg5 "-1"
+Assign in_Cfg6 "-1"
+Assign in_Cfg7 "-1"
+Assign in_Cfg8 "-1"
+Assign in_Cfg9 "-1"
+Assign in_EquipNumber ""
+Assign in_EquipStatus ""
+Assign in_EquipPool ""
+Assign in_Workstation ""
+Assign in_SwapFlag "FALSE"
+Assign in_SrcRoom ""
+Assign in_EquipSrcNumber ""
+Assign in_EquipSrcStatus ""
+Assign in_EquipSrcPool ""
+Assign in_COS ""
+Assign in_ClearText ""
+Assign in_DND ""
+Assign in_MsgLampStatus ""
+Assign in_PrinterPort ""
+Assign in_RoomStatus ""
+Assign in_VoiceMail ""
+Assign in_PostType ""
+Assign in_Duration ""
+Assign in_DialedDigits ""
+Assign in_TotalAmount ""
+Assign in_MBItem ""
+Assign in_MBCount ""
+Assign in_MeterPulse ""
+Assign in_SalesOutlet ""
+Assign in_SubTotal1 ""
+Assign in_Discount1 ""
+Assign in_ServiceCharge ""
+Assign in_Tax1 ""
+Assign in_Tax2 ""
+Assign in_Tax3 ""
+Assign in_AnswerStatus ""
+Assign in_MsgID ""
+Assign in_MsgText ""
+Assign in_BillDescription ""
+Assign in_BillItemAmount ""
+Assign in_BillDeptCode ""
+Assign in_BillFolioNum ""
+Assign in_BillDisplay ""
+Assign in_BillBalance ""
+
+if "$(s_CombinedServicesImplimented)" EQ "TRUE"
+	Assign in_Cfg0 ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleGI
+;	Handle a Checkin message.
+:HandleGI
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(in_GuestShare)" EQ "Y"
+		Goto HandleGI_GuestShare
+
+	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_SwapFlag)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestID)" "$(in_GuestGroup)"
+
+//	Check for NoPost.
+	if "$(in_NoPost)" EQ "Y"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+	if "$(in_NoPost)" EQ "N"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+
+//	Check for DDI Allocation.
+	if "$(in_EquipStatus)" EQ "0"
+		CreateClearDDI "$(in_Room)"
+	if "$(in_EquipStatus)" EQ "1"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+	if "$(in_EquipStatus)" EQ "2"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+
+//	Check if we need to handle any Combined Services Features
+	if "$(s_CombinedServicesImplimented)" NE "TRUE"
+		Return
+
+//	If there is no package, do nothing
+	if "$(in_Cfg0)" EQ ""
+		Return
+
+//	If there is already a package on the room, do nothing
+	QueryCallPackage "$(in_Room)"
+	if "$(_G_RESULT)" NE ""
+		Return
+
+//	There is no package on the room, create it
+	if "$(in_Cfg0)" EQ "FULPK1"
+		CreateCallPkg "$(in_Room)" "1" "101" "0"
+	if "$(in_Cfg0)" EQ "FULPK2"
+		CreateCallPkg "$(in_Room)" "1" "102" "0"
+
+Return
+
+:HandleGI_GuestShare
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	if "$(in_SwapFlag)" NE "TRUE"
+		CreateAddExtraGuest "$(in_Room)" "$(in_Reservation)" "$(in_GuestName)" "$(in_GuestTitle)" "$(in_VIP)" "$(in_GuestGroup)"
+	if "$(in_SwapFlag)" EQ "TRUE"
+		CreateUpdateExtraGuest "$(in_Room)" "$(in_Reservation)" "$(in_GuestName)" "$(in_GuestTitle)" "$(in_VIP)" "$(in_GuestGroup)"
+
+//	Check for NoPost.
+	if "$(in_NoPost)" EQ "Y"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+	if "$(in_NoPost)" EQ "N"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleGO
+;	Handle a Checkout message.
+:HandleGO
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+//	Check if we need to handle any Combined Services Features
+	if "$(s_CombinedServicesImplimented)" EQ "TRUE"
+		Call HandleGO_CombinedServices
+
+	if "$(in_GuestShare)" EQ "Y"
+		Goto HandleGO_GuestShare
+
+	CreateCheckOut "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_SwapFlag)"
+
+//	Check for DDI Allocation.
+	if "$(in_EquipStatus)" EQ "0"
+		CreateClearDDI "$(in_Room)"
+	if "$(in_EquipStatus)" EQ "1"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+	if "$(in_EquipStatus)" EQ "2"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+
+Return
+
+:HandleGO_GuestShare
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	CreateDeleteExtraGuest "$(in_Room)" "$(in_Reservation)"
+
+Return
+
+:HandleGO_CombinedServices
+
+//	If the room has a Call Package assigned to it then we must clear it down
+
+	QueryCallPackage "$(in_Room)"
+	if "$(_G_RESULT)" EQ ""
+		Return
+
+	CreateCallPkg "$(in_Room)" "1" "-1" "1"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleGC
+;	Handle a Guest Change message.
+:HandleGC
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(in_GuestShare)" EQ "Y"
+		Goto HandleGC_GuestShare
+	if "$(in_GuestShareDest)" EQ "Y"
+		Goto HandleGC_GuestShare
+
+//	Check if this is a Room Update or Room Transfer event
+	if "$(in_SrcRoom)" EQ ""
+		Goto HandleGC_RoomUpdate
+
+	CreateRoomTransfer "$(in_SrcRoom)" "$(in_Room)" "$(in_Reservation)"
+
+	CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)"
+
+//	Check for DDI Allocation.
+	if "$(in_EquipSrcStatus)" EQ  "0"
+		CreateClearDDI "$(in_SrcRoom)"
+	if "$(in_EquipSrcStatus)" EQ "1"
+		CreateSetDDI "$(in_SrcRoom)" "$(in_EquipSrcNumber)"
+	if "$(in_EquipSrcStatus)" EQ "2"
+		CreateSetDDI "$(in_SrcRoom)" "$(in_EquipSrcNumber)"
+	if "$(in_EquipSrcStatus)" EQ "3"
+		CreateClearDDI "$(in_SrcRoom)" "$(in_EquipSrcNumber)"
+	if "$(in_EquipStatus)" EQ "1"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+	if "$(in_EquipStatus)" EQ "2"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+	if "$(in_EquipStatus)" EQ "3"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+
+Return
+
+:HandleGC_RoomUpdate
+
+	CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)"
+
+	if "$(in_NoPost)" EQ "Y"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+	if "$(in_NoPost)" EQ "N"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+
+//	Check for DDI
+	if "$(in_EquipStatus)" EQ ""
+		Goto HandleGC_SkipDDI
+
+//	Check for DDI Allocation.
+	if "$(in_EquipStatus)" EQ "0"
+		CreateClearDDI "$(in_Room)"
+	if "$(in_EquipStatus)" EQ "1"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+	if "$(in_EquipStatus)" EQ "2"
+		CreateSetDDI "$(in_Room)" "$(in_EquipNumber)"
+
+:HandleGC_SkipDDI
+
+//	Check if we need to handle any Combined Services Features
+	if "$(s_CombinedServicesImplimented)" NE "TRUE"
+		Return
+
+//	If there is no package, do nothing
+	if "$(in_Cfg0)" EQ ""
+		Return
+
+//	If there is already a package on the room, do nothing
+	QueryCallPackage "$(in_Room)"
+	if "$(_G_RESULT)" NE ""
+		Return
+
+//	There is no package on the room, create it
+	if "$(in_Cfg0)" EQ "FULPK1"
+		CreateCallPkg "$(in_Room)" "1" "101" "0"
+	if "$(in_Cfg0)" EQ "FULPK2"
+		CreateCallPkg "$(in_Room)" "1" "102" "0"
+
+Return
+
+:HandleGC_GuestShare
+
+	if "$(in_SrcRoom)" NE ""
+		Goto HandleGC_GuestShareTransfer
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	CreateUpdateExtraGuest "$(in_Room)" "$(in_Reservation)" "$(in_GuestName)" "$(in_GuestTitle)" "$(in_VIP)" "$(in_GuestGroup)"
+
+	if "$(in_NoPost)" EQ "Y"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+	if "$(in_NoPost)" EQ "N"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+
+Return
+
+:HandleGC_GuestShareTransfer
+
+	if "$(in_GuestShare)" EQ "N"
+		Goto HandleGC_GuestShareTransferCOSrc
+	if "$(in_GuestShareDest)" EQ "N"
+		Goto HandleGC_GuestShareTransferCIDest
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	CreateDeleteExtraGuest "$(in_SrcRoom)" "$(in_Reservation)"
+	CreateAddExtraGuest "$(in_Room)" "$(in_Reservation)" "$(in_GuestName)" "$(in_GuestTitle)" "$(in_VIP)" "$(in_GuestGroup)"
+
+Return
+
+:HandleGC_GuestShareTransferCOSrc
+
+//	The Source is not a share but the Destination room is
+
+	CreateCheckout "$(in_SrcRoom)"
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	CreateAddExtraGuest "$(in_Room)" "$(in_Reservation)" "$(in_GuestName)" "$(in_GuestTitle)" "$(in_VIP)" "$(in_GuestGroup)"
+
+Return
+
+:HandleGC_GuestShareTransferCIDest
+
+//	The Dest is not a share but the Source room is
+
+	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_SwapFlag)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestID)" "$(in_GuestGroup)"
+
+	if "$(s_ExtraGuest)" NE "TRUE"
+		Return
+
+	CreateDeleteExtraGuest "$(in_SrcRoom)" "$(in_Reservation)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRE
+;	Handle a Room Equipment message.
+:HandleRE
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_DoNotDisturb)" NE "TRUE"
+		Goto HandleRE_SkipDND
+	if "$(in_DND)" EQ ""
+		Goto HandleRE_SkipDND
+
+	if "$(in_DND)" EQ "N"
+		CreateDND "$(in_Room)" "FALSE"
+	if "$(in_DND)" EQ "Y"
+		CreateDND "$(in_Room)" "TRUE"
+
+:HandleRE_SkipDND
+
+	if "$(in_COS)" EQ ""
+		Goto HandleRE_SkipCOS
+
+	Assign WorkVal "FALSE"
+	if "$(in_COS)" EQ "3"
+		Assign WorkVal "TRUE"
+
+	CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "$(WorkVal)" "TRUE" "TRUE" "$(in_COS)"
+
+:HandleRE_SkipCOS
+
+	if "$(s_MessageWaiting)" NE "TRUE"
+		Goto HandleRE_SkipMW
+	if "$(in_MsgLampStatus)" EQ ""
+		Goto HandleRE_SkipMW
+
+	Assign WorkVal "FALSE"
+	if "$(in_MsgLampStatus)" EQ "Y"
+		Assign WorkVal "TRUE"
+
+	CreateMessageWaiting "$(in_Room)" "$(WorkVal)"
+
+:HandleRE_SkipMW
+
+	if "$(s_GenesisTVInterface)" NE "TRUE"
+		Goto HandleRE_SkipTV
+	if "$(in_TVRights)" EQ ""
+		Goto HandleRE_SkipTV
+
+	CreateRoomUpdate "$(in_Room)" "" "" "" "" "" "" "" "TRUE" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$(in_TVRights)" ""
+
+:HandleRE_SkipTV
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXI
+;	Handle a Bill Item Message.
+:HandleXI
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	if "$(in_BillDisplay)" NE "Y"
+		Return
+
+	Call GetDateTime
+	if "$(in_Date)" EQ ""
+		Assign in_Date "$(Date)"
+	if "$(in_Time)" EQ ""
+		Assign in_Time "$(Time)"
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto InvalidDateTime
+
+	CreateBillItem "$(in_Room)" "$(in_Reservation)" "$(in_Date)" "$(in_Time)" "$(in_BillDeptCode)" "$(in_BillDescription)" "$(in_BillItemAmount)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXB
+;	Handle a Bill Balance Message.
+:HandleXB
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	Assign f_GotBalance "TRUE"
+
+	Call GetDateTime
+	if "$(in_Date)" EQ ""
+		Assign in_Date "$(Date)"
+	if "$(in_Time)" EQ ""
+		Assign in_Time "$(Time)"
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto InvalidDateTime
+
+	CreateBillBalance "$(in_Room)" "$(in_Reservation)" "$(in_Date)" "$(in_Time)" "$(in_BillBalance)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXC
+;	Handle an Express Checkout Message.
+:HandleXC
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	Assign f_GotCheckoutConfirm "TRUE"	
+	CreateExpressCheckoutReply "$(in_Room)" "$(in_Reservation)" "$(in_AnswerStatus)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXL
+;	Handle an Online Text Message
+:HandleXL
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	CreateMWMessage "$(in_Room)" "$(in_MsgID)" "$(in_MsgText)" "new" "$(in_Reservation)" "XL"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXT
+;	Handle an Offline Text Message
+:HandleXT
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	if "$(f_MessageHandled)" EQ "TRUE"
+		Goto HandleXT_MessageHandled
+
+	CreateMWMessage "$(in_Room)" "$(in_MsgID)" "$(in_MsgText)" "saved" "$(in_Reservation)" "XT"
+
+:HandleXT_MessageHandled
+
+	Assign f_MessageHandled "FALSE"
+
+Return
+
+:HandleXT_Check
+
+	if "$(s_GenesisTVInterface)" NE "TRUE"
+		Return
+
+	if "$(RecType)" NE "XT"
+		Return
+
+//	We need to receive until ETX
+	Assign in_MsgText ""
+	Assign WorkTmp ""
+
+:HandleXT_StartRead
+
+	Sleep 10
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto HandleXT_StartRead
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto HandleXT_GotCR
+
+	if "$(_PORTCHARS)" EQ "|"
+		Goto HandleXT_GotPipe
+
+	Assign in_MsgText "$(in_MsgText)$(_PORTCHARS)"
+
+	Goto HandleXT_StartRead
+
+:HandleXT_GotCR
+
+//	Read off the LF and add it to ReceivedRec
+	ReadFromPort 1
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+//	We now need to check what the next character is in case it's another CR or Pipe
+	Call HandleXT_CheckChar
+
+//	Create the record
+	if "$(in_MsgText)" NE ""
+		CreateMWMessage "$(in_Room)" "$(in_MsgID)" "<in_MsgText:TEXT:70:LJ,SP>" "saved" "$(in_Reservation)" "XT"
+
+	Assign in_MsgText ""
+
+//	If we have a character from the next message we should assign it here
+	if "$(WorkTmp)" NE ""
+		Assign in_MsgText "$(WorkTmp)"
+
+	Assign WorkTmp ""
+
+//	Check for the next line
+	Goto HandleXT_StartRead
+
+:HandleXT_GotPipe
+
+//	Create the record
+	if "$(in_MsgText)" NE ""
+		CreateMWMessage "$(in_Room)" "$(in_MsgID)" "<in_MsgText:TEXT:70:LJ,SP>9999" "saved" "$(in_Reservation)" "XT"
+
+	Assign in_MsgText ""
+	Assign WorkTmp ""
+	Assign f_MessageHandled "TRUE"
+
+Goto ReadNextRecordField
+
+:HandleXT_CheckChar
+
+	ReadFromPort 1
+
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+//	If it's a Pipe then we are finished
+	if "$(_PORTCHARS)" EQ "|"
+		Goto HandleXT_GotPipe
+
+//	If it's another CR then we need to action that
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto HandleXT_GotCR
+
+//	It's the first letter of the next line, store it and continue
+	Assign WorkTmp "$(_PORTCHARS)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleXD
+;	Handle a Deleted Text Message
+:HandleXD
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Return
+
+	CreateMWMessage "$(in_Room)" "$(in_MsgID)" "XD_DELETED" "saved" "$(in_Reservation)" "XD"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandlePA
+;	Handle a Posting Answer Message.
+:HandlePA
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	Assign f_GotPostAnswer "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWR
+;	Handle a Wakeup Request Message.
+:HandleWR
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto InvalidDateTime
+
+	CreateSetWakeup "$(in_Room)" "" "<in_Time:TIME:4:HHMM>" "<in_Date:DATE:8:YYYYMMDD>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleWC
+;	Handle a Wakeup Clear Message.
+:HandleWC
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(in_Time)" EQ ""
+		CreateClearAllWakeup "$(in_Room)" ""
+	if "$(in_Time)" EQ ""
+		Return
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto InvalidDateTime
+
+	if "$(in_Time)" NE ""
+		CreateClearWakeup "$(in_Room)" "" "<in_Time:TIME:4:HHMM>" "<in_Date:DATE:8:YYYYMMDD>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDS
+;	Handle a Database Swap Start Message
+:HandleDS
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "Start"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "Start"
+
+//	We need to wait for the DE before we can release back to the program
+	Assign f_GotSwapEnd "FALSE"
+	Assign f_WaitingForSwapEnd "TRUE"
+
+//	Start a Wait Timer for 10 minutes whilst waiting for the DE Record
+	StartWaitTimer 600
+
+:HandleDS_WaitForDE
+
+	Call CheckIncoming
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto HandleDS_TimeoutWaitingForDE
+
+	if "$(f_GotSwapEnd)" EQ "TRUE"
+		Goto HandleDS_GotDE
+
+	Goto HandleDS_WaitForDE
+
+:HandleDS_GotDE
+
+//	We have the Database Swap End Record, reset the flags and return to the program.
+
+	Assign f_WaitingForSwapEnd "FALSE"
+	Assign f_GotSwapEnd "FALSE"
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "End"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "End"
+
+Return
+
+:HandleDS_TimeoutWaitingForDE
+
+	Echo Er: Timeout waiting for DE record.
+	Assign f_WaitingForSwapEnd "FALSE"
+	Assign f_GotSwapEnd "FALSE"
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "End"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "End"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDE
+;	Handle a Database Swap End Message
+:HandleDE
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	Assign f_GotSwapEnd "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  InvalidDateTime
+;   Wakeup Time/Date did not parse.
+:InvalidDateTime
+
+	Echo Er: Received invalid Date or Time - Record Ignored.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;	This is where we handle the sending of the record to the PMS and await the
+;	acknowledgement.
+:SendRecord
+
+	Assign v_ACKRetries 0
+	Assign f_Sending "TRUE"
+
+//	Send the Record
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+
+//	If we are IP then we don't check for an ACK.
+	if "$(s_Connection)" EQ "IP"
+		Goto GotAckToRec
+
+//	Wait for an ACK
+	StartWaitTimer 120
+
+:WaitForAckToRec
+
+	ReadFromPort 1
+
+//	If it's an STX we must receive the rest of the record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	If it's not blank echo it.
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+//	If it's an ACK then we can finish off.
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto GotAckToRec
+
+//	If it's a NAK then we need to resend the record.
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+//	If the timeout has expired then we need to send an ENQ.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto TimeoutWaitingForACK
+
+	Goto WaitForAckToRec
+
+:GotAckToRec
+
+Return
+
+:TimeoutWaitingForACK
+
+//	If we've retried 3 times we discard the record and log an error
+	if "$(v_ACKRetries)" EQ "3"
+		Goto ACKRetriesExceeded
+
+//	Increment Retry count.
+	Assign v_ACKRetries $(v_ACKRetries) + 1
+
+	Echo Er: Timeout waiting for ACK
+	Echo Tx: <#5>
+	Send <#5>
+
+//	Restart wait timer and wait for ACK
+	StartWaittimer $(s_HowLongToWait)
+
+	Goto WaitForAckToRec
+
+:ACKRetriesExceeded
+
+	Echo Er: 3 successive ENQs failed. Discarding record.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  GetDateTime
+;	Sets up the Date and Time variables with the current date and time.
+:GetDateTime
+
+	Assign Date "<_G_NOW:DATE:6:YYMMDD>"
+	Assign Time "<_G_NOW:TIME:6:HHMMSS>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkStart
+;	This sends a Link Start (LS) record to the PMS.
+:DoLinkStart
+
+	Call GetDateTime
+
+	Assign SendRec "LS|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkStop
+;	This sends a Link End (LE) record to the PMS.
+:DoLinkStop
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Return
+
+	Call GetDateTime
+
+	Assign SendRec "LE|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkStop
+;	Called when we receive a Link End (LE) from the PMS.
+:HandleLinkStop
+
+	Assign f_LinkAlive "FALSE"
+	Assign f_SentLinkRecords "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkAlive
+;	This sends a Link Alive (LA) record to the PMS.
+:DoLinkAlive
+
+	Call GetDateTime
+
+	Assign SendRec "LA|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkAlive
+;	This is called when we receive a Link Alive (LA) from the PMS. We need to
+;	check if we're waiting for an LS, if we are then we need to send an LA back
+;	otherwise we just flag our link as alive.
+:HandleLinkAlive
+
+	if "$(f_WaitingForLinkStart)" NE "TRUE"
+		Goto HLA_NotWaitingForLS
+
+	Call DoLinkAlive
+
+	Assign f_WaitingForLinkStart "FALSE"
+	Assign f_SentLinkRecords "TRUE"
+
+:HLA_NotWaitingForLS
+
+	Assign f_LinkAlive "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkConfiguration
+;	Called when we receive a Link Configuration (LC) from the PMS
+:HandleLinkConfiguration
+
+	Echo If: PMS V#$(in_Cfg1) - IFC V#$(in_Cfg2) - FIAS Driver V#$(in_Cfg3)
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkStart
+;	This is called when we receive a Link Start (LS) from the PMS. We need to
+;	send Link Description (LD) and Link Record (LR) messages along with a Link
+;	Alive (LA) message to the PMS.
+:HandleLinkStart
+
+//	Reset our waiting for LinkStart flag.
+	Assign f_WaitingForLinkStart "FALSE"
+
+//	Reset our other flags as the link is not currently alive
+	Assign f_LinkAlive "FALSE"
+	Assign f_SentLinkRecords "FALSE"
+
+//	Send Link Description (LD) message.
+	Call GetDateTime
+
+	Assign SendRec "LD|DA$(Date)|TI$(Time)|IFPB|V#1.0|RT52|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for CheckIn (GI).
+	Assign SendRec "LR|RIGI|FLDATIRNGSG#GNGFGTGGGAGDGVGLNP"
+
+	if "$(s_TVRights)" EQ "TRUE"
+		Assign SendRec "$(SendRec)TVVR"
+
+	if "$(s_DDI)" EQ "TRUE"
+		Assign SendRec "$(SendRec)ENESEP"
+
+	if "$(s_SendDefinableFields)" EQ "TRUE"
+		Assign SendRec "$(SendRec)A0A1A2A3A4A5A6A7A8A9"
+
+	Assign SendRec "$(SendRec)SF|<#3>"
+
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for CheckOut (GO).
+	Assign SendRec "LR|RIGO|FLDATIRNGSG#"
+
+	if "$(s_DDI)" EQ "TRUE"
+		Assign SendRec "$(SendRec)ENESEP"
+
+	Assign SendRec "$(SendRec)SF|<#3>"
+
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Update (GC).
+	Assign SendRec "LR|RIGC|FLDATIRNGSG#ROGNGFGTGGGAGDGVGLNP"
+
+	if "$(s_TVRights)" EQ "TRUE"
+		Assign SendRec "$(SendRec)TVVR"
+
+	if "$(s_DDI)" EQ "TRUE"
+		Assign SendRec "$(SendRec)ENESEPEOETEI"
+
+	if "$(s_SendDefinableFields)" EQ "TRUE"
+		Assign SendRec "$(SendRec)A0A1A2A3A4A5A6A7A8A9"
+
+	Assign SendRec "$(SendRec)|<#3>"
+
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Room Equipment Status (RE).
+	Assign SendRec "LR|RIRE|FLRNG#CSCTRS"
+
+	if "$(s_DoNotDisturb)" EQ "TRUE"
+		Assign SendRec "$(SendRec)DN"
+
+	if "$(s_TVRights)" EQ "TRUE"
+		Assign SendRec "$(SendRec)TV"
+
+	if "$(s_MessageWaiting)" EQ "TRUE"
+		Assign SendRec "$(SendRec)MLVM"
+
+	Assign SendRec "$(SendRec)|<#3>"
+
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Posting Simple (PS).
+	Assign SendRec "LR|RIPS|FLDATIRNPTDUDDTACTMAM#MPSOS1D1SCT1T2T3|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Posting Answer (PA).
+	Assign SendRec "LR|RIPA|FLRNASDATIWSP#SO|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Check if we are set to handle Extended Messages
+	if "$(s_HandleExtendedMessages)" NE "TRUE"
+		Goto HLS_RecordsSent
+
+//	Send Link Record (LR) message for Guest Message (Online) (XL).
+	Assign SendRec "LR|RIXL|FLDATIRNG#MIMT|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Message (XT).
+	Assign SendRec "LR|RIXT|FLDATIRNG#MIMT|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Message Deleted (XD).
+	Assign SendRec "LR|RIXD|FLDATIRNG#MI|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Message Request (XM).
+	Assign SendRec "LR|RIXM|FLDATIRNG#MI|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Bill Request (XR).
+	Assign SendRec "LR|RIXR|FLDATIRNG#|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Bill Item (XI).
+	Assign SendRec "LR|RIXI|FLDATIRNG#BDBIDCF#FD|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Balance (XB).
+	Assign SendRec "LR|RIXB|FLDATIRNG#BA|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Guest Remote Checkout (XC).
+	Assign SendRec "LR|RIXC|FLDATIRNG#BAASCT|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+:HLS_RecordsSent
+
+	Assign f_SentLinkRecords "TRUE"
+
+	Call DoLinkAlive
+
+	Assign f_WaitingForLA "TRUE"
+
+	StartWaitTimer 60
+
+:HLS_WaitForLA
+
+	Sleep 100
+
+	Call CheckIncoming
+
+	if "$(f_LinkAlive)" EQ "TRUE"
+		Goto HLS_GotLA
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto RestartPort
+
+	Goto HLS_WaitForLA
+
+:HLS_GotLA
+
+	Assign f_WaitingForLA "FALSE"
+	Echo Db: f_LinkAlive: "$(f_LinkAlive)"
+
+Exit
+
+:HLS_LinkAlive
+
+	Call DoLinkAlive
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RestartPort
+;	This label is called when we need to restart the TCP/IP Port
+:RestartPort
+
+	Echo If: Timeout waiting for a response - Restarting the port over 20 seconds
+
+	Call DoLinkStop
+	ClosePort
+	Sleep 18000
+	OpenPort
+	Sleep 2000
+
+	Goto PO_SkipEcho
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;	This will flag that the event is processed and exit the script.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;	This will flag that the event is processed and exit the script effectively
+;	ignoring the record.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

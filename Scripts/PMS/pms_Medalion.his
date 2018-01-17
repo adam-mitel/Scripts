@@ -1,0 +1,607 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a Carahost
+;  Iface PC.
+;
+;  Note: This interface does not support Reservation Numbers
+;
+;                                                               ph-190100
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+; *** Variable definitions
+; SendRec is the record that we use to send data
+define SendRec				// The record we build to send to Carahost
+define ReceivedRec			// The record we receive
+define RecType				// The record type that we have received
+define WorkVal				// General purpose work variable used at regular
+
+define OpenDOD				// Used to determine whether to open the Line
+define CloseDOD				// Used to determine whether to close the Line
+
+; Variables used for incoming data items.  These items are the seperate fields
+;  we can receive.
+define in_Extn
+define in_LNStatus
+define in_Reservation
+define in_DOD
+define in_LanguageDesc
+define in_LanguageCode
+define in_MWStatus
+define in_RmStatus
+define in_GuestName
+define in_FlagValue
+define in_DestExtn
+define in_StationID
+define in_BCC
+define flg_SendingAfterReceive
+
+define work_no
+define datetime
+
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+  assign flg_SendingAfterReceive "FALSE"
+
+  ; OPT: These 2 items are the class of service settings for opening and
+  ;      closing the lines in the room.
+  assign CloseDOD "01"
+  assign OpenDOD  "07"
+
+OpenPort
+
+exit
+; ************************************************************************
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+; OPT: If we are to ignore call records and not send them, you should uncomment
+;      this next line.
+; goto IgnoreRecord
+
+assign work_no "<_EV_EXTNNUMBER:TEXT:5:RJ,SP>"
+
+; J 8080    0     0404011517   004       1   00709218574          6F
+assign SendRec "J<_EV_EXTNNUMBER:TEXT:5:RJ,SP>   00$(work_no)<_EV_CALLDATE:DATE:6:DDMMYY><_EV_CALLTIME:TIME:4:HHMM> <_EV_CALLDURATION:TIME:5:^MMM^SS><_EV_CALLCHARGE:NUMBER:8:RJ,ZP,2DP> 000<_EV_CALLDIALLEDDIGITS:TEXT:20:LJ,SP>"
+GenerateBCCChar "HEXString" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+echo Current Call: <_EV_CALLDATE:DATE:6:DDMMYY> <_EV_CALLTIME:TIME:4:HHMM> ID: <_EV_ID:TEXT:5:RJ,ZP>
+
+echo Current Call: <_EV_CALLDATE:DATE:8:DD/MM/YY> <_EV_CALLTIME:TIME:5:HH:MM> ID: <_EV_ID:TEXT:5:RJ,ZP>
+
+call SendRecord
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+; OPT: If we are to ignore room status events and not send them, you should
+;      uncomment this next line.
+//goto IgnoreRecord
+
+; Sort out the maid id if there is one.
+assignasis WorkVal "<_EV_RSMAIDID:TEXT:4:RJ,SP>
+
+assign SendRec "C<_EV_EXTNNUMBER:TEXT:5:RJ,SP>$(WorkVal)<_EV_RSCODE:TEXT:2:RJ,ZP>"
+GenerateBCCChar "HEXString" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+call SendRecord
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+; OPT: If we are to ignore message waiting events and not send them, you should
+;      uncomment this next line.
+//goto IgnoreRecord
+
+; Default to 0 for mw light off
+assign WorkVal "0"
+
+; set it to 1 if it is an mw light on
+if "$(_EV_MWSTATE)" EQ "TRUE"
+	assign WorkVal "1"
+
+assign SendRec "F<_EV_EXTNNUMBER:TEXT:5:RJ,SP>M$(WorkVal)     "
+GenerateBCCChar "HEXString" "$(SendRec)"
+assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+
+call SendRecord
+exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;    This section is called periodically when the program is idle.
+; ************************************************************************
+:PeriodicCheck
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;    This section is Called when we have received an ENQ from the PMS
+; ************************************************************************
+:ReceiveRecord
+
+; Sleep to slow down processing some.
+sleep 100
+
+; Blank any previous record types.
+assign RecType ""
+
+; We now have to get the record type from the next 2 characters if we get here
+:GETRECTYPE
+
+assign _G_IN_RECORDFORMAT ""
+
+; Read the next character
+ReadFromPort 1 2
+
+; Add to the display record if we receive them
+if "$(_PORTCHARS)" NE ""
+	assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+; Test the record type and set up for the receiving of it.
+assign RecType ""
+
+; OPT: Comment these two lines if you want to ignore all incoming checkin
+;      records.
+if "$(_PORTCHARS)" EQ "A"
+  call CIRECORD
+
+; OPT: Comment these two lines if you want to ignore all incoming checkout
+;      records.
+if "$(_PORTCHARS)" EQ "D"
+	call CORECORD
+
+; OPT: Comment these two lines if you want to ignore all incoming COS
+;      records.
+if "$(_PORTCHARS)" EQ "M"
+        call COSRECORD
+
+; _G_IN_RECORDFORMAT will have the correct format for the record we are
+; receiving.  We now need to read the rest of the record in.
+
+; OPT: We have receive the start of the record and determined its type.  We
+;      need to receive the rest of the record and the next line is the amount
+;      of time we should allow for it.
+StartWaitTimer 10
+
+:READINGREC
+; Read the next character
+ReadFromPort 1
+
+; Add it to ReceivedRec if there is anything
+if "$(_PORTCHARS)" NE ""
+	assign ReceivedRec "$(ReceivedRec)" "$(_PORTCHARS)"
+
+; if it is an ETX we have finished
+if "$(_PORTCHARS)" EQ "<#3>"
+	echo Rx: $(ReceivedRec)
+if "$(_PORTCHARS)" EQ "<#3>"
+  call SENDACK
+if "$(_PORTCHARS)" EQ "<#3>"
+	goto FINISHEDRECEIVING
+
+; If we timeout, we need to quit
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	goto QUITRECEIVING
+
+; We are still receiving a record so go back.
+goto READINGREC
+
+; ************************************************************************
+;  FINISHEDRECEIVING
+;    We now have a complete record, time to process it.
+; ************************************************************************
+:FINISHEDRECEIVING
+
+; If this record is one we are not interested in, skip the next few lines.
+if "$(RecType)" EQ ""
+  goto SkipProcessIncoming
+
+; Extract the fields from the record and process them to create the events.
+assign _G_IN_RECORD "$(ReceivedRec)"
+parseInRecord
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+	goto ReceiveError
+
+if "$(RecType)" EQ "CI"
+	call CreateCIEvents
+if "$(RecType)" EQ "CO"
+	call CreateCOEvents
+if "$(RecType)" EQ "COS"
+	call CreateCOSEvent
+:SkipProcessIncoming
+
+:QuitReceiving
+
+Return
+
+
+; ************************************************************************
+;  CIRECORD
+;    Sets up the expected format for the system refresh record.
+:CIRECORD
+  assign RecType "CI"
+  assignasis _G_IN_RECORDFORMAT "<#2>A<in_Extn:TEXT:5:RJ,SP> <in_GuestName:TEXT:20:LJ,SP><in_LanguageCode:TEXT:1:LJ,SP>         <in_DOD:TEXT:1:LJ,SP>                <in_BCC:TEXT:2:RJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CORECORD
+;    Sets up the expected format for the checkin, checkout and level 9
+;    bar record.
+:CORECORD
+  assign RecType "CO"
+  assignasis _G_IN_RECORDFORMAT "<#2>D<in_Extn:TEXT:5:RJ,SP><in_BCC:TEXT:2:SP><#3>"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  COSRECORD
+;    Sets up the expected format for the wakeup call record.
+:COSRECORD
+  assign RecType "COS"
+  assignasis _G_IN_RECORDFORMAT "<#2>M<in_Extn:TEXT:5:RJ,SP> <in_GuestName:TEXT:20:LJ,SP><in_LanguageCode:TEXT:1:LJ,SP>         <in_DOD:TEXT:1:LJ,SP>                <in_BCC:TEXT:2:RJ,SP><#3>"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CreateCIEvents
+;    Creates the checkin event followed by the class of
+;    service event.
+:CreateCIEvents
+
+CreateCheckIn "$(in_Extn)" "" "" "" "$(in_GuestName)"
+
+if "<in_DOD:TEXT:1:>" EQ "$(OpenDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "TRUE" "TRUE" "TRUE" ""
+if "<in_DOD:TEXT:1:>" EQ "$(CloseDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "FALSE" "TRUE" "TRUE" ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CreateCOEvents
+;    Creates the checkin event followed by the class of
+;    service event.
+:CreateCOEvents
+
+CreateCheckOut "$(in_Extn)" "" "" ""
+
+if "<in_DOD:TEXT:1:>" EQ "$(OpenDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "TRUE" "TRUE" "TRUE" ""
+if "<in_DOD:TEXT:1:>" EQ "$(CloseDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "FALSE" "TRUE" "TRUE" ""
+
+Return
+; ************************************************************************
+
+
+
+; ************************************************************************
+;  CreateCOSEvents
+;    Creates the RoomUpdate event and the class of service event.
+:CreateCOSEvents
+
+; Create a COS Event
+if "<in_DOD:TEXT:1:>" EQ "$(OpenDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "TRUE" "TRUE" "TRUE" ""
+if "<in_DOD:TEXT:1:>" EQ "$(CloseDOD)"
+	CreateCOS "$(in_Extn)" "" "TRUE" "FALSE" "TRUE" "TRUE" ""
+
+; If name is zeros then skip room update.
+if "<in_GuestName:TEXT:20:RJ,SP>" EQ "00000000000000000000"
+	goto CCOSSkipName
+
+CreateRoomUpdate "$(in_Extn)" "" "<in_LanguageCode:NUMBER:1:RJ,ZP>" "$(in_GuestName)"
+
+:CCOSSkipName
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CreateMWEvent
+;    Creates the message waiting event.
+:CreateMWEvent
+if "<in_FlagValue:TEXT:1:>" EQ "0"
+	CreateMessageWaiting "$(in_Extn)" "FALSE"
+if "<in_FlagValue:TEXT:1:>" EQ "1"
+	CreateMessageWaiting "$(in_Extn)" "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when an error is found in the formatting of the record.
+; ************************************************************************
+:ReceiveError
+  Echo Error with Received Record - Record ignored
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+; Read a character
+ReadFromPort 1
+
+; if it is an STX, show it and call ReceiveRecord
+if "$(_PORTCHARS)" NE ""
+	Assign ReceivedRec "$(_PORTCHARS)"
+if "$(_PORTCHARS)" EQ "<#2>"
+	Call ReceiveRecord
+
+; Release back to the program, we have not received an ENQ
+Exit
+
+
+; ************************************************************************
+;  SendRecord
+;   Execution is sent here whenever we have a record in SendRec to send
+;   to the CaraHost.
+; ************************************************************************
+:SendRecord
+
+; Sleep to slow the processing down a bit.
+Sleep 100
+
+; Send the record to the PMS
+Send $(SendRec)
+Echo Tx: $(SendRec)
+
+; OPT: We have just sent the record and now need to wait for an ACK to it.
+;      The parameter on the following line allows you to set how long we wait
+;      for this response.
+StartWaitTimer 10
+
+
+:WAITFORACKTOREC
+; sleep to slow the processing down a bit.
+Sleep 100
+
+; Read a single character from the port
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Echo Rx: $(_PORTCHARS)
+
+; if the received character is an ACK
+if "$(_PORTCHARS)" EQ "<#6>"
+	Goto GOTACKTOREC
+
+; If we got an STX then yield.
+if "$(_PORTCHARS)" EQ "<#2>"
+	Assign ReceivedRec "$(_PORTCHARS)"
+if "$(_PORTCHARS)" EQ "<#2>"
+	Call ReceiveRecord
+
+; If the wait timeout has expired
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto SendRecord
+
+; We are still waiting for an ACK to the record so go back
+Goto WAITFORACKTOREC
+
+; We get to this if we receive an ACK to the record
+:GOTACKTOREC
+
+; If we are sending this record immediately after a receive, we need to use
+; Return.
+if "$(flg_SendingAfterReceive)" EQ "TRUE"
+  Return
+
+CALL HANDLEOK
+RETURN
+
+; ******************************************************************************
+;  HANDLEOK
+;    This will flag that the event is processed.
+
+:HANDLEOK
+  FLAGPROCESSED OK
+RETURN
+; ******************************************************************************
+
+
+; ******************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+
+
+; ************************************************************************
+;  SENDENQ
+;   Sends an Enq (#5) character out of the port and echoes it to the
+;   communications display.
+
+:SENDENQ
+  Send <#5>
+  Echo Tx: <#5>
+RETURN
+; ************************************************************************
+
+
+; ************************************************************************
+;  SENDACK
+;   Sends an Ack (#6) character out of the port and echoes it to the
+;   communications display.
+
+:SENDACK
+  Send <#6>
+  Echo Tx: <#6>
+RETURN
+; ************************************************************************
+
+

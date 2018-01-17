@@ -1,0 +1,1627 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.3.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to Starwood GPS
+;
+;  Notes: This script is valid with GPS specification version 6.3a
+;	  For Call Records the Posting ID will be the Call Category ID
+;	  For Minibar the Posting ID will be the Item ID
+;
+;    						               AU-20150827
+;
+;  Modifications - AU - 14/06/2016 - 50.0.3.0
+;	* Added support for Posting Status to create Class of Service events
+;	* Bug fix when receiving Room Update records
+;	* Resolved issue with Room Transfers being the wrong way around
+;
+;  Modifications - AU - 20/10/2015 - 50.0.2.0
+;	* Implemented some of BF's fixes and updates for spec version 6.3a
+;
+; ************************************************************************
+;                     Copyright © 2015, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define ReceivedRec
+define RecType
+define SendRec
+define Verb
+define WorkTmp
+define WorkVal
+;
+define f_GotReply
+define f_GotVer
+define f_Transaction
+define f_Sending
+define f_WaitingForReply
+;
+define v_Message
+define v_MessageID
+define v_Reservation
+define v_Room
+;
+define g_PostDescription
+define g_Reservation
+;
+define s_DoLRC
+define s_RecordTimeout
+define s_UseIP
+;
+define in_AdultEnabled
+define in_BCC
+define in_Charge
+define in_CheckinDate
+define in_CheckinTime
+define in_CheckoutDate
+define in_CheckoutTime
+define in_Date
+define in_Description
+define in_Dummy
+define in_GroupCode
+define in_GuestCount
+define in_GuestName
+define in_GuestTitle
+define in_Indicator
+define in_LanguageCode
+define in_MessageFor
+define in_MessageFrom
+define in_MessageFromLocation
+define in_MessageFromNumber
+define in_MessageID
+define in_MessageStatus
+define in_MessageText
+define in_PostingStatus
+define in_Reservation
+define in_Room
+define in_Sequence
+define in_SpecialCode1
+define in_SpecialCode2
+define in_SpecialCode3
+define in_SpecialCode4
+define in_SpecialCode5
+define in_SpecialCode6
+define in_SpecialCode7
+define in_SpecialCode8
+define in_SpecialCode9
+define in_SpecialCode10
+define in_SwapFlag
+define in_SPGCode
+define in_SrcRoom
+define in_Time
+define in_Transaction
+define in_TVRights
+define in_VideoEnabled
+define in_VideoRights
+define in_VIPCode
+;
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+//	OPT: Specify whether the connection is IP
+	Assign s_UseIP "YES"
+
+//	OPT: Specify whether we should send an LRC character at the end of our
+//	     records.  This is usually NO for an IP connection and YES for Serial
+	Assign s_DoLRC "NO"
+
+//	OPT: Specify the number of seconds we should wait for a response from the PMS
+	Assign s_RecordTimeout "10"
+
+	Sleep 2000
+
+	CreateAutoIncNumber TransID 1 999 1
+
+	if "$(s_UseIP)" EQ "YES"
+		Exit
+
+	OpenPort
+
+Goto PORT_OPENED
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;   Called when socket is connected. Gives you the opportunity to send
+;   any messages to start the connection.
+:PORT_OPENED
+
+	Assign f_Sending "FALSE"
+	Assign f_WaitingForReply "FALSE"
+	Assign f_GotReply "FALSE"
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<_G_RESULT:NUMBER:3:RJ,ZP>9999STRT<#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;   Called at program start-up.  Gives you the opportunity to send a link
+;   termination message.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+	Assign g_PostDescription "$(_EV_CALLDIALLEDDIGITS)"
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+
+	QueryReservationCode "$(_EV_ROOMNUMBER)"
+	Assign g_Reservation "$(_G_RESULT)"
+    
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999POST<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><g_Reservation:TEXT:10:LJ,SP><_EV_CALLCAT:TEXT:2:RJ,SP><g_PostDescription:TEXT:12:LJ,SP><_EV_CALLCHARGEPENCE:TEXT:7:RJ,ZP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999HSKP<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><_EV_RSCODE:TEXT:2:RJ,SP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+	Assign g_PostDescription "$(_EV_MBITEMQUANTITY)x $(_EV_MBDESCRIPTION)"
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+
+	QueryReservationCode "$(_EV_ROOMNUMBER)"
+	Assign g_Reservation "$(_G_RESULT)"
+
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999POST<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><g_Reservation:TEXT:10:LJ,SP><_EV_MBITEMCODE:TEXT:2:RJ,SP><g_PostDescription:TEXT:12:LJ,SP><_EV_MBCHARGEPENCE:TEXT:7:RJ,SP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+	if "$(_EV_MWCFGFIELD_0)" NE "XM"
+		Goto IgnoreRecord
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999MSGR<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><_EV_RESERVATION:TEXT:10:LJ,SP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+//	We do not get a VER reply to this record so need to use SendReply
+	Call SendReply
+
+	Assign v_Message ""
+	Assign v_MessageID ""
+	Assign v_Reservation ""
+	Assign v_Room "$(_EV_ROOMNUMBER)"
+
+	StartWaitTimer2 $(s_RecordTimeout)
+
+:MessageWaiting_WaitForReply
+
+	Call CheckIncoming
+
+	if "$(f_GotReply)" EQ "TRUE"
+		Goto MessageWaiting_GotReply
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Echo Db: Timeout waiting for Text Message replies
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Goto MessageWaiting_GotReply
+
+	Goto MessageWaiting_WaitForReply
+
+:MessageWaiting_GotReply
+
+	Assign v_Message ""
+	Assign v_MessageID ""
+	Assign v_Reservation ""
+	Assign v_Room ""
+
+	Call HandleOK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   The script is executed from this label when we have a bill enquiry
+;   event to send.
+:BillEnquiry
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999DISP<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><_EV_RESERVATION:TEXT:10:LJ,SP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+//	We do not get a VER reply to this record so need to use SendReply
+	Call SendReply
+
+	Assign v_Reservation ""
+	Assign v_Room "$(_EV_ROOMNUMBER)"
+
+	StartWaitTimer2 $(s_RecordTimeout)
+
+:BillEnquiry_WaitForReply
+
+	Call CheckIncoming
+
+	if "$(f_GotReply)" EQ "TRUE"
+		Goto BillEnquiry_GotReply
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Echo Db: Timeout waiting for Bill Item/Balance replies
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Goto BillEnquiry_GotReply
+
+	Goto BillEnquiry_WaitForReply
+
+:BillEnquiry_GotReply
+
+	Assign v_Reservation ""
+	Assign v_Room ""
+
+	Call HandleOK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   The script is executed from this label when we have an express 
+;   checkout event to send.
+:ExpressCheckout
+
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999XCKO<_EV_ROOMNUMBER:TEXT:6:AN,LJ,SP><_EV_RESERVATION:TEXT:10:LJ,SP><_EV_XCBALANCE:TEXT:7:RJ,SP><#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   The script is executed from this label when we have a Bill Response 
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   The script is executed from this label when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TvRights
+;   The script is executed from this label when we have a TV Rights 
+;   event to send.
+:TvRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   The script is executed from this label when we have a Call Package 
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   The script is executed from this label when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   The script is executed from this label when we have a Generic 
+;   Passthrough event to send.
+:GenericPassthrough
+
+	if "$(_EV_GPTMSGTYPE)" NE "DatabaseSwap"
+		Goto IgnoreRecord
+	if "$(_EV_GPTCFGFIELD_1)" NE "Request"
+		Goto IgnoreRecord
+
+//	Send an INIT DatabaseSwap request.
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999INIT<#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendReply
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   The script is executed from this label periodically by the program
+:PeriodicCheck
+
+//	Send a TEST heartbeat.
+	GetNextAutoIncNumber TransID
+	Assign f_Transaction "<_G_RESULT:NUMBER:3:RJ,ZP>"
+	Assign SendRec "T<f_Transaction:NUMBER:3:RJ,ZP>9999TEST<#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+:CheckIncoming
+
+	Assign f_Sending "FALSE"
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Exit
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Call SendACK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;    This label is called when we have a record to receive.
+:ReceiveRecord
+
+//	Clear/Set default the old field values
+	Call ReceiveRecord_ClearValues
+
+//	Read the next 4 characters for the transaction ID.
+	ReadFromPort 4 2
+
+//	if it is not blank, add it to the record.
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Assign in_Transaction "$(ReceivedRec)"
+
+//	Read the next 4 characters for the sequence no.
+	ReadFromPort 4 2
+
+//	if it is not blank, add it to the record.
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Assign in_Sequence "$(_PORTCHARS)"
+
+//	Read the next 4 characters to get the Verb.
+	ReadFromPort 4 2
+
+//	if it is not blank, add it to the record.
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+	if "$(_PORTCHARS)" NE ""
+		Assign Verb "$(_PORTCHARS)"
+
+//	Test the record type and Call the setup handlers
+
+	if "<Verb:TEXT:4:LJ,SP>" EQ "STRT"
+		Call STRTRECORD
+	if "<Verb:TEXT:3:LJ,SP>" EQ "VER"
+		Call VERRECORD
+	if "<Verb:TEXT:3:LJ,SP>" EQ "ERR"
+		Call ERRRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "DBST"
+		Call DBSTRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "DBED"
+		Call DBEDRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "CHKI"
+		Call CHKIRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "CHKM"
+		Call CHKMRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "CHKO"
+		Call CHKORECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "CMOV"
+		Call CMOVRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "NAME"
+		Call NAMERECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "ITEM"
+		Call ITEMRECORD
+	if "<Verb:TEXT:3:LJ,SP>" EQ "BAL"
+		Call BALRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "MSGW"
+		Call MSGWRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "MHDR"
+		Call MHDRRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "MCLR"
+		Call MCLRRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "MTXT"
+		Call MTXTRECORD
+
+	if "$(Verb)" EQ ""
+		Goto ReceiveRecord_QuitReceiving
+
+:ReceiveRecord_ContinueReceiving
+
+	ReadFromPort 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReceiveRecord_WaitForBCC
+
+	Goto ReceiveRecord_ContinueReceiving
+
+:ReceiveRecord_WaitForBCC
+
+	if "$(s_DoLRC)" NE "YES"
+		Goto ReceiveRecord_FinishedReceiving
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" EQ ""
+		Assign ReceivedRec "$(ReceivedRec)<#0>"
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:ReceiveRecord_FinishedReceiving
+
+	Echo Rx: $(ReceivedRec)
+
+	if "$(RecType)" EQ ""
+		Goto ReceiveRecord_NoRecType
+
+	if "$(s_UseIP)" EQ "NO"
+		Call SendACK
+
+//	Extract the fields from the record
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	ParseInRecord
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Error with Received Record - Record ignored
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto ReceiveRecord_SkipProcessIncoming
+
+	if "<RecType:TEXT:4:LJ,SP>" EQ "STRT"
+		Call HandleSTRTRecord
+	if "<RecType:TEXT:3:LJ,SP>" EQ "VER"
+		Call HandleVERRecord
+	if "<RecType:TEXT:3:LJ,SP>" EQ "ERR"
+		Call HandleERRRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "DBST"
+		Call HandleDBSTRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "DBED"
+		Call HandleDBEDRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "CHKI"
+		Call HandleCHKIRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "CHKM"
+		Call HandleCHKMRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "CHKO"
+		Call HandleCHKORecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "CMOV"
+		Call HandleCMOVRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "NAME"
+		Call HandleNAMERecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "ITEM"
+		Call HandleITEMRecord
+	if "<RecType:TEXT:3:LJ,SP>" EQ "BAL"
+		Call HandleBALRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "MSGW"
+		Call HandleMSGWRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "MHDR"
+		Call HandleMHDRRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "MCLR"
+		Call HandleMCLRRecord
+	if "<RecType:TEXT:4:LJ,SP>" EQ "MTXT"
+		Call HandleMTXTRecord
+
+:ReceiveRecord_SkipProcessIncoming
+
+	if "$(f_Sending)" EQ "TRUE"
+		Return
+	if "$(f_WaitingForReply)" EQ "TRUE"
+		Return
+
+Exit
+
+:ReceiveRecord_QuitReceiving
+
+//	We have an incomplete record, echo it and exit
+	Echo Rx: $(ReceivedRec)
+	Echo Er: Received incomplete record
+
+Exit
+
+:ReceiveRecord_NoRecType
+
+//	There is no RecType, we are not interested in this record
+	Echo Er: Unknown record - Replying with ERR1
+
+	if "$(s_UseIP)" EQ "NO"
+		Call SendACK
+
+	Assign SendRec "$(in_Transaction)9999ERR  1<#3>"
+	if "$(s_DoLRC)" EQ "YES"
+		GenerateBCCChar "7bit" "$(SendRec)"
+	if "$(s_DoLRC)" EQ "YES"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_DoLRC)" NE "YES"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendReply
+
+//	If we're sending then Return to where we were.
+	if "$(f_Sending)" EQ "TRUE"
+		Return
+
+Exit
+
+:ReceiveRecord_ClearValues
+
+	Assign RecType ""
+	Assign Verb ""
+	Assign in_AdultEnabled ""
+	Assign in_BCC ""
+	Assign in_Charge ""
+	Assign in_CheckinDate ""
+	Assign in_CheckinTime ""
+	Assign in_CheckoutDate ""
+	Assign in_CheckoutTime ""
+	Assign in_Date ""
+	Assign in_Description ""
+	Assign in_Dummy ""
+	Assign in_GroupCode ""
+	Assign in_GuestCount ""
+	Assign in_GuestName ""
+	Assign in_GuestTitle ""
+	Assign in_Indicator ""
+	Assign in_LanguageCode ""
+	Assign in_MessageFor ""
+	Assign in_MessageFrom ""
+	Assign in_MessageFromLocation ""
+	Assign in_MessageFromNumber ""
+	Assign in_MessageID ""
+	Assign in_MessageStatus ""
+	Assign in_MessageText ""
+	Assign in_PostingStatus ""
+	Assign in_Reservation ""
+	Assign in_Room ""
+	Assign in_Sequence ""
+	Assign in_SpecialCode1 ""
+	Assign in_SpecialCode2 ""
+	Assign in_SpecialCode3 ""
+	Assign in_SpecialCode4 ""
+	Assign in_SpecialCode5 ""
+	Assign in_SpecialCode6 ""
+	Assign in_SpecialCode7 ""
+	Assign in_SpecialCode8 ""
+	Assign in_SpecialCode9 ""
+	Assign in_SpecialCode10 ""
+	Assign in_SPGCode ""
+	Assign in_SrcRoom ""
+	Assign in_SwapFlag ""
+	Assign in_Time ""
+	Assign in_Transaction ""
+	Assign in_TVRights ""
+	Assign in_VideoEnabled ""
+	Assign in_VideoRights ""
+	Assign in_VIPCode ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; STRTRECORD
+;  Setup for receiving a STRT message.
+:STRTRECORD
+
+	Assign RecType "STRT"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>STRT<#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; VERRECORD
+;  Setup for receiving a VER reply.
+:VERRECORD
+
+	Assign RecType "VER"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>VER <#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; ERRRECORD
+;  Setup for receiving a ERR reply.
+:ERRRECORD
+
+	Assign RecType "ERR"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>ERR <in_Indicator:TEXT:2:RJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; DBSTRECORD
+;  Setup for receiving a DBST message.
+:DBSTRECORD
+
+	Assign RecType "DBST"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>DBST<#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; DBEDRECORD
+;  Setup for receiving a DBED message.
+:DBEDRECORD
+
+	Assign RecType "DBED"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>DBED<#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; CHKIRECORD
+;  Setup for receiving a Checkin record.
+:CHKIRECORD
+
+	Assign RecType "CHKI"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>CHKI<in_Room:TEXT:6:LJ,SP><in_Reservation:TEXT:10:LJ,SP><in_GuestName:TEXT:20:LJ,SP><in_GuestTitle:TEXT:4:LJ,SP><in_VideoEnabled:TEXT:1:LJ,SP><in_AdultEnabled:TEXT:1:LJ,SP><in_PostingStatus:TEXT:2:ZP><in_CheckinDate:TEXT:15:LJ,SP><in_CheckoutDate:TEXT:15:LJ,SP><in_GuestCount:TEXT:2:RJ,SP><in_MessageStatus:TEXT:2:LJ,SP><in_SPGCode:TEXT:2:LJ,SP><in_VIPCode:TEXT:4:LJ,SP><in_LanguageCode:TEXT:2:LJ,SP><in_GroupCode:TEXT:6:LJ,SP><in_SpecialCode1:TEXT:4:LJ,SP><in_SpecialCode2:TEXT:4:LJ,SP><in_SpecialCode3:TEXT:4:LJ,SP><in_SpecialCode4:TEXT:4:LJ,SP><in_SpecialCode5:TEXT:4:LJ,SP><in_SpecialCode6:TEXT:4:LJ,SP><in_SpecialCode7:TEXT:4:LJ,SP><in_SpecialCode8:TEXT:4:LJ,SP><in_SpecialCode9:TEXT:4:LJ,SP><in_SpecialCode10:TEXT:4:LJ,SP><in_SwapFlag:TEXT:1:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; CHKMRECORD
+;  Setup for receiving an Update record.
+:CHKMRECORD
+
+	Assign RecType "CHKM"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>CHKM<in_Room:TEXT:6:LJ,SP><in_Reservation:TEXT:10:LJ,SP><in_GuestName:TEXT:20:LJ,SP><in_GuestTitle:TEXT:4:LJ,SP><in_VideoEnabled:TEXT:1:LJ,SP><in_AdultEnabled:TEXT:1:LJ,SP><in_PostingStatus:TEXT:2:ZP><in_CheckinDate:TEXT:15:LJ,SP><in_CheckoutDate:TEXT:15:LJ,SP><in_GuestCount:TEXT:2:RJ,SP><in_MessageStatus:TEXT:2:LJ,SP><in_SPGCode:TEXT:2:LJ,SP><in_VIPCode:TEXT:4:LJ,SP><in_LanguageCode:TEXT:2:LJ,SP><in_GroupCode:TEXT:6:LJ,SP><in_SpecialCode1:TEXT:4:LJ,SP><in_SpecialCode2:TEXT:4:LJ,SP><in_SpecialCode3:TEXT:4:LJ,SP><in_SpecialCode4:TEXT:4:LJ,SP><in_SpecialCode5:TEXT:4:LJ,SP><in_SpecialCode6:TEXT:4:LJ,SP><in_SpecialCode7:TEXT:4:LJ,SP><in_SpecialCode8:TEXT:4:LJ,SP><in_SpecialCode9:TEXT:4:LJ,SP><in_SpecialCode10:TEXT:4:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"    
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; CHKOECORD
+;  Setup for receiving a Checkout record.
+:CHKORECORD
+
+	Assign RecType "CHKO"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>CHKO<in_Room:TEXT:6:LJ,SP><in_Reservation:TEXT:10:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; CMOVRECORD
+;  Setup for receiving a Move record.
+:CMOVRECORD
+
+	Assign RecType "CMOV"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>CMOV<in_Room:TEXT:6:LJ,SP><in_SrcRoom:TEXT:6:LJ,SP><in_Reservation:TEXT:10:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+
+; ************************************************************************
+; NAMERECORD
+;  Setup for receiving an Item response.
+:NAMERECORD
+
+	Assign RecType "NAME"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>NAME<in_Room:TEXT:6:LJ,SP><in_Reservation:TEXT:10:LJ,SP><in_GuestName:TEXT:20:LJ,SP><in_PostingStatus:TEXT:2:ZP><in_Indicator:TEXT:1:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; ITEMRECORD
+;  Setup for receiving an Item response.
+:ITEMRECORD
+
+	Assign RecType "ITEM"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>ITEM<in_Date:DATE:4:MMYY><in_Description:TEXT:12:LJ,SP><in_Indicator:TEXT:2:LJ,SP><in_Charge:TEXT:7:RJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; BALRECORD
+;  Setup for receiving a Balance response.
+:BALRECORD
+
+	Assign RecType "BAL"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>BAL <in_Charge:TEXT:8:RJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; MSGWRECORD
+;  Setup for receiving a Message Waiting record.
+:MSGWRECORD
+
+	Assign RecType "MSGW"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>MSGW<in_Room:TEXT:6:LJ,SP><in_Indicator:TEXT:1:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; MHDRRECORD
+;  Setup for receiving a Message Header record.
+:MHDRRECORD
+
+	Assign RecType "MHDR"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>MHDR<in_MessageID:TEXT:6:LJ,SP><in_Date:DATE:6:MMDDYY><in_Time:TIME:6:HHMMSS><in_MessageFor:TEXT:24:LJ,SP><in_Dummy:TEXT:6:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; MCLRRECORD
+;  Setup for receiving a Message Caller record.
+:MCLRRECORD
+
+	Assign RecType "MCLR"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>MCLR<in_MessageID:TEXT:6:LJ,SP><in_MessageFrom:TEXT:24:LJ,SP><in_MessageFromLocation:TEXT:24:LJ,SP><in_MessageFromNumber:TEXT:24:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; MTXTRECORD
+;  Setup for receiving a Message Text record.
+:MTXTRECORD
+
+	Assign RecType "MTXT"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>MTXT<in_MessageID:TEXT:6:LJ,SP><in_MessageText:TEXT:64:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleSTRTRecord
+;    Called to handle a STRT record from the TV System
+:HandleSTRTRecord
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleVERRecord
+;    Called to handle a VER record from the TV System
+:HandleVERRecord
+
+//	Check it was for our last transaction
+	Assign f_Transaction "T$(f_Transaction)"
+
+	if "$(in_Transaction)" NE "$(f_Transaction)"
+		Echo If: Got VER for transaction $(in_Transaction) but waiting for $(f_Transaction)
+
+//	if it is then flag this event handled.
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Assign f_GotVer "TRUE"
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Echo If: Got VER for current transaction ($(f_Transaction)). Flagging as processed.
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Call HANDLEOK
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleERRRecord
+;    Called to handle a EER record from the TV System
+:HandleERRRecord
+
+//	Check it was for our last transaction
+	Assign f_Transaction "T$(f_Transaction)"
+
+	Assign WorkVal ""
+	if "$(in_Indicator)" EQ "0"
+		Assign WorkVal "Undefined error"
+	if "$(in_Indicator)" EQ "1"
+		Assign WorkVal "Unknown command verb"
+	if "$(in_Indicator)" EQ "2"
+		Assign WorkVal "Unknown room number"
+	if "$(in_Indicator)" EQ "3"
+		Assign WorkVal "Room unoccupied"
+	if "$(in_Indicator)" EQ "4"
+		Assign WorkVal "Unknown account number"
+	if "$(in_Indicator)" EQ "5"
+		Assign WorkVal "Account number not checked into room"
+	if "$(in_Indicator)" EQ "6"
+		Assign WorkVal "Invalid method of payment"
+	if "$(in_Indicator)" EQ "7"
+		Assign WorkVal "Account balance changed"
+	if "$(in_Indicator)" EQ "8"
+		Assign WorkVal "Unknown maid code"
+	if "$(in_Indicator)" EQ "9"
+		Assign WorkVal "Night audit in progress"
+	if "$(in_Indicator)" EQ "10"
+		Assign WorkVal "Locked folio"
+	if "$(in_Indicator)" EQ "11"
+		Assign WorkVal "Guest message not found"
+	if "$(in_Indicator)" EQ "12"
+		Assign WorkVal "Guest message cannot be delivered"
+
+	Echo If: Got ERR for transaction $(in_Transaction), $(WorkVal).
+
+	Assign WorkVal ""
+
+//	if it is then flag this event handled.
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Call HandleOK
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Assign f_GotVer "TRUE"
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Echo If: Got ERR for current transaction ($(f_Transaction)). Flagging as processed.
+	if "$(in_Transaction)" EQ "$(f_Transaction)"
+		Call HANDLEOK
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDBSTRecord
+;    Called to handle a DBST record from the PMS System
+:HandleDBSTRecord
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "Start"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "Start"
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDBEDRecord
+;    Called to handle a DBED record from the PMS System
+:HandleDBEDRecord
+
+	if "$(_EV_ROOMNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "End"
+	if "$(_EV_ROOMNUMBER)" EQ ""
+		CreateGenericPassThrough "FFFF" "DatabaseSwap" "End"
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleCHKIRecord
+;    Called to handle a CHKI record from the PMS System
+:HandleCHKIRecord
+
+//	Convert the TV and Video rights to FIAS values for other interfaces
+
+	Assign in_VideoRights "VN"
+	if "$(in_VideoEnabled)" EQ "Y"
+		Assign in_VideoRights "VA"
+
+	Assign in_TVRights "TX"
+	if "$(in_AdultEnabled)" EQ "Y"
+		Assign in_TVRights "TU"
+
+	Assign in_GuestID "$(in_Reservation)"
+
+	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LanguageCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIPCode)" "TRUE" "$(in_SpecialCode1)" "$(in_SpecialCode2)" "$(in_SpecialCode3)" "$(in_SpecialCode4)" "$(in_SpecialCode5)" "$(in_SpecialCode6)" "$(in_SpecialCode7)" "$(in_SpecialCode8)" "$(in_SpecialCode9)" "$(in_SpecialCode10)" "FALSE" "$(in_CheckinDate)" "$(in_CheckoutDate)" "$(in_SPGCode)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "" "" "$(in_GuestID)" "$(in_GroupCode)"
+
+	if "$(in_PostingStatus)" EQ "PO"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+	if "$(in_PostingStatus)" EQ "NP"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleCHKMRecord
+;    Called to handle a CHKM record from the PMS System
+:HandleCHKMRecord
+
+//	Convert the TV and Video rights to FIAS values for other interfaces
+
+	Assign in_VideoRights "VN"
+	if "$(in_VideoEnabled)" EQ "Y"
+		Assign in_VideoRights "VA"
+
+	Assign in_TVRights "TX"
+	if "$(in_AdultEnabled)" EQ "Y"
+		Assign in_TVRights "TU"
+
+	Assign in_GuestID "$(in_Reservation)"
+
+	CreateRoomUpdate "$(in_Room)" "" "$(in_LanguageCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIPCode)" "TRUE" "$(in_SpecialCode1)" "$(in_SpecialCode2)" "$(in_SpecialCode3)" "$(in_SpecialCode4)" "$(in_SpecialCode5)" "$(in_SpecialCode6)" "$(in_SpecialCode7)" "$(in_SpecialCode8)" "$(in_SpecialCode9)" "$(in_SpecialCode10)" "FALSE" "$(in_CheckinDate)" "$(in_CheckoutDate)" "$(in_SPGCode)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "" "" "$(in_GuestID)" "$(in_GroupCode)"
+
+	if "$(in_PostingStatus)" EQ "PO"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
+	if "$(in_PostingStatus)" EQ "NP"
+		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "FALSE" "TRUE" "TRUE" ""
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleCHKORecord
+;    Called to handle a CHKO record from the PMS System
+:HandleCHKORecord
+
+	CreateCheckOut "$(in_Room)" "$(in_Reservation)" "" "$(in_LanguageCode)"
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleCMOVRecord
+;    Called to handle a CMOV record from the PMS System
+:HandleCMOVRecord
+
+	CreateRoomTransfer "$(in_SrcRoom)" "$(in_Room)" "$(in_Reservation)"
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleNAMERecord
+;    Called to handle a NAME record from the PMS System
+:HandleNAMERecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleITEMRecord
+;    Called to handle a ITEM record from the PMS System
+:HandleITEMRecord
+
+	Assign v_Reservation "$(in_Reservation)"
+
+	if "$(in_Date)" EQ ""
+		Assign in_DateDate "<_G_NOW:DATE:6:YYMMDD>"
+	if "$(in_Time)" EQ ""
+		Assign in_Time "<_G_NOW:TIME:6:HHMMSS>"
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	CreateBillItem "$(v_Room)" "$(in_Reservation)" "$(in_Date)" "$(in_Time)" "" "$(in_Description)" "$(in_Charge)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleBALRecord
+;    Called to handle a BAL record from the PMS System
+:HandleBALRecord
+
+	if "$(in_Date)" EQ ""
+		Assign in_DateDate "<_G_NOW:DATE:6:YYMMDD>"
+	if "$(in_Time)" EQ ""
+		Assign in_Time "<_G_NOW:TIME:6:HHMMSS>"
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Date:DATE:6:YYMMDD> <in_Time:TIME:6:HHMMSS>"
+	Assign _G_IN_RECORD "$(in_Date) $(in_Time)"
+
+	ParseInRecord
+
+	CreateBillBalance "$(in_Room)" "$(v_Reservation)" "$(in_Date)" "$(in_Time)" "$(in_Charge)"
+
+	Assign f_GotReply "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandlMSGWRecord
+;    Called to handle a MSGW record from the PMS System
+:HandleMSGWRecord
+
+	Assign WorkVal "FALSE"
+	if "$(in_Indicator)" EQ "Y"
+		Assign WorkVal "TRUE"
+
+	CreateMessageWaiting "$(in_Room)" "$(WorkVal)"
+
+	Call SendVER
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleMHDRRecord
+;    Called to handle a MHDR record from the PMS System
+:HandleMHDRRecord
+
+	if "$(v_MessageID)" EQ ""
+		Goto HandleMHDRRecord_NewRecord
+
+//	This is a header record for a second message, create what we have and clear saved values
+	CreateMWMessage "$(v_Room)" "$(v_MessageID)" "$(v_Message)" "saved" "$(v_Reservation)" "XT"
+
+	Assign v_Message ""
+	Assign v_MessageID ""
+	Assign v_Reservation ""
+
+:HandleMHDRRecord_NewRecord
+
+	Assign v_MessageID "$(in_MessageID)"
+	Assign v_Reservaton "$(in_Reservation)"
+	Assign v_Message "Message For: $(in_MessageFor)<#13><#10>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleMCLRRecord
+;    Called to handle a MCLR record from the PMS System
+:HandleMCLRRecord
+
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Echo Er: Incoming Message ID [$(in_MessageID)] does not match our stored ID [$(v_MessageID)]
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Assign f_GotReplyError "TRUE"
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Return
+
+	Assign v_Message "$(v_Message)Message From: $(in_MessageFrom) $(in_MessageFromNumber)<#13><#10><#13><#10>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleMTXTRecord
+;    Called to handle a MTXT record from the TV System
+:HandleMTXTRecord
+
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Echo Er: Incoming Message ID [$(in_MessageID)] does not match our stored ID [$(v_MessageID)]
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Assign f_GotReplyError "TRUE"
+	if "$(in_MessageID)" NE "$(v_MessageID)"
+		Return
+
+	if "$(in_Sequence)" EQ "9999"
+		Assign v_Message "$(v_Message)$(in_MessageText)"
+	if "$(in_Sequence)" NE "9999"
+		Assign v_Message "$(v_Message)$(in_MessageText)<#13><#10>"
+
+//	If the sequence is 9999 then it is the last message
+	if "$(in_Sequence)" EQ "9999"
+		CreateMWMessage "$(v_Room)" "$(v_MessageID)" "$(v_Message)" "saved" "$(v_Reservation)" "XT"
+	if "$(in_Sequence)" EQ "9999"
+		Assign f_GotReply "TRUE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendVER
+;    This label is called when we have a VER to send
+:SendVER
+
+	Assign SendRec "$(in_Transaction)9999VER <#3>"
+	GenerateBCCChar "7bit" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendReply
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendReply
+;    This label is called when we have a reply to send
+:SendReply
+
+//	Send the record
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	If we are not using Serial, we do not need to wait for an ACK
+	if "$(s_UseIP)" NE "NO"
+		Goto SendReply_GotACKToRec
+
+	StartWaitTimer 10
+
+:SendReply_WaitForACKToRec
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timed out waiting for ACK.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendReply
+
+//	If we didn't receive anything go back and read again
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendReply_WaitForACKToRec
+
+//	Check if it was an ACK
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Echo Rx: <#6>
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendReply_GotACKToRec
+	
+//	If we got a NAK we need to send the record again
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Echo Rx: <#21>
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendReply
+
+//	If it's an STX then we need to receive a record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	Skip if it is an ETX from the record
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto SendReply_SkipEcho
+
+//	To get here we received something else, echo it
+	Echo If: Echo from Loose Char in SendReply
+	Echo Rx: $(_PORTCHARS)
+
+:SendReply_SkipEcho
+
+	Goto SendReply_WaitForACKToRec
+
+:SendReply_GotACKToRec
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;    This label is called when we have a record to send
+:SendRecord
+
+	Assign f_Sending "TRUE"
+	Assign f_GotVer "FALSE"
+
+//	Send the record
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+//	If we are not using Serial, we do not need to wait for an ACK
+	if "$(s_UseIP)" NE "NO"
+		Goto SendRecord_GotACKToRec
+
+	StartWaitTimer $(s_RecordTimeout)
+
+:SendRecord_WaitForACKToRec
+
+	ReadFromPort 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timed out waiting for ACK to the Record.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Sleep 2000
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Exit
+
+//	If we didn't receive anything go back and read again
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForACKToRec
+
+//	Check if it was an ACK
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Echo Rx: <#6>
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotAckToRec
+	
+//	If we got a NAK we need to send the record again
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Echo Rx: <#21>
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+//	If it's an STX then we need to receive a record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	Skip if it is an ETX from the record
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto SendRecord_SkipEcho
+
+//	To get here we received something else, echo it
+	Echo Rx: $(_PORTCHARS)
+
+:SendRecord_SkipEcho
+
+	Goto SendRecord_WaitForACKToRec
+
+:SendRecord_GotACKToRec
+
+//	Start a Wait Timer for the VER Record
+	StartWaitTimer $(s_RecordTimeout)
+
+:SendRecord_WaitForVer
+
+	ReadFromPort 1
+
+//	If it is an STX We need to receive the record
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	If we've recieved the VER then we have finished
+	if "$(f_GotVer)" EQ "TRUE"
+		Return
+
+//	If the Wait Timer has expired, resend the record.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timed out waiting for VER
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Exit
+
+//	If we haven't received a character, read another one.
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForVer
+
+//	If it's not an STX, Echo it.
+	if "$(_PORTCHARS)" NE "<#2>"
+		Echo Rx: $(_PORTCHARS)
+
+//	If it's an ENQ send an ACK
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Call SendACK
+  
+Goto SendRecord_WaitForVer
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;    This will flag that the event is processed and exit the script.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+; HandleOK
+;    This will flag that the event is processed and return.
+:HandleOK
+
+	FlagProcessed OK
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; SendACK
+;    This label is called when we need to send an ACK.
+:SendACK
+
+	Echo Tx: <#6>
+	Send <#6>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; SendENQ
+;    This label is called when we need to send an ENQ.
+:SendENQ
+
+	Echo Tx: <#5>
+	Send <#5>
+
+Return
+; ************************************************************************

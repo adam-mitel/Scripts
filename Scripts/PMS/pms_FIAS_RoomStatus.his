@@ -1,0 +1,956 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.1.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a FIAS Protocol
+;  for receiving Room Status commands.
+;
+;  Opera Part Number: 5009-326
+;  Opera FTK Logo:    TGT
+;
+;							       AU-20150604
+;
+; ************************************************************************
+;                     Copyright © 2015, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+define WorkTmp
+;
+define Date
+define Time
+;
+define f_Sending
+define f_LinkAlive
+define f_SentLinkRecords
+define f_WaitingForLinkStart
+;
+define s_Connection
+define s_RespondToLA
+;
+define v_ACKRetries
+define v_FieldID
+define v_FieldData
+;
+define in_Date
+define in_Time
+define in_Room
+define in_RoomStatus
+define in_Cfg1
+define in_Cfg2
+define in_Cfg3
+;
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+// OPT: Set s_Connection type to IP or SERIAL.
+Assign s_Connection "IP"
+
+// OPT: Set s_RespondToLA to TRUE if we should respond to the Link Alive heartbeat
+Assign s_RespondToLA "FALSE"
+
+if "$(s_Connection)" EQ "IP"
+	Exit
+
+OpenPort
+
+Goto PO_SkipEcho
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;   Called when socket is connected. Gives you the opportunity to send
+;   any messages to start the connection.
+:PORT_OPENED
+
+Echo If: Connection established, Resetting LinkAlive and SendLinkRecords to false.
+
+Assign f_LinkAlive "FALSE"
+Assign f_WaitingForLinkStart "TRUE"
+
+:PO_SkipEcho
+
+Assign f_LinkAlive "FALSE"
+Assign f_SentLinkRecords "FALSE"
+
+StartWaitTimer 5
+
+:PO_WaitForLS
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto PO_NotGotLS
+
+Call CheckIncoming
+
+Goto PO_WaitForLS
+
+:PO_NotGotLS
+
+if "$(f_LinkAlive)" EQ "TRUE"
+	Goto PO_GotLS
+
+Echo If: Did not receive LS within 5 seconds, sending LS to start the link.
+
+Call DoLinkStart
+
+StartWaitTimer 5
+
+:PO_WaitForLS_2
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto PO_NotGotLS_2
+
+Call CheckIncoming
+
+Goto PO_WaitForLS_2
+
+:PO_NotGotLS_2
+
+if "$(f_LinkAlive)" EQ "TRUE"
+	Goto PO_GotLS
+
+Echo If: No response to our LS in 5 seconds, closing and reopening TCP port to try again.
+
+ClosePort
+Sleep 5000
+OpenPort
+
+Goto PO_SkipEcho
+
+:PO_GotLS
+
+// We got the LS so we should be up and running.
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;   Called at program start-up.  Gives you the opportunity to send a link
+;   termination message.
+:SHUTDOWN
+
+Call DoLinkStop
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   The script is executed from this label when we have a bill enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   The script is executed from this label when we have an express 
+;   checkout event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   The script is executed from this label when we have a Bill Response 
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   The script is executed from this label when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TvRights
+;   The script is executed from this label when we have a TV Rights 
+;   event to send.
+:TvRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   The script is executed from this label when we have a Call Package 
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   The script is executed from this label when we have a Generic 
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   The script is executed from this label periodically by the program
+:PeriodicCheck
+
+//	If the link is not alive - do not send LS
+	if "$(f_LinkAlive)" NE "TRUE"
+		Exit
+
+	Call GetDateTime
+
+	Assign SendRec "LS|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;	Execution is periodically carried out from here by the program to
+;	check for incoming data during idle times.
+:CheckIncoming
+
+	Assign f_Sending "FALSE"
+
+	ReadFromPort 1
+
+//	If we have received an ENQ then we have missed a record.
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Rx: <#5>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Tx: <#21>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Send <#21>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Exit
+
+//	If we have received an STX then we need to set up to receive a record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Exit
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(f_WaitingForLinkStart)" EQ "TRUE"
+		Return
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;	This label is called when we have a record to receive.
+:ReceiveRecord
+
+StartWaitTimer2 30
+
+// Clear out old field data.
+Call ClearFieldData
+
+// Read 2 chars, this is the record type.
+ReadFromPort 2 2
+
+Assign RecType "$(_PORTCHARS)"
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+// Read 1 char, this is the | symbol following the record type.
+ReadFromPort 1 2
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+:ReadNextRecordField
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+// Read next char from port. This should be the first char of the Field ID or an ETX.
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ ""
+	Goto ReadNextRecordField
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+Assign v_FieldID "$(_PORTCHARS)"
+
+// if we have an ETX then we are at the end of the record and we need to read the BCC.
+if "$(_PORTCHARS)" EQ "<#3>"
+	StartWaitTimer2 2
+if "$(_PORTCHARS)" EQ "<#3>"
+	Goto ReadBCC
+
+:ReadFieldID
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+// Read next char from port. This should be the second char of the Field ID
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ ""
+	Goto ReadFieldID
+
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+Assign v_FieldID "$(v_FieldID)$(_PORTCHARS)"
+
+if "$(v_FieldID)" EQ "MT"
+	Call HandleXT_Check
+
+// Clear field data
+Assign v_FieldData ""
+
+:ReadFieldData
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto ReceiveRecord_Timeout
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" EQ "|"
+	Call ProcessField
+if "$(_PORTCHARS)" EQ "|"
+	Goto ReadNextRecordField
+
+if "$(_PORTCHARS)" EQ "<#3>"
+	Call ProcessField
+if "$(_PORTCHARS)" EQ "<#3>"
+	StartWaitTimer2 2
+if "$(_PORTCHARS)" EQ "<#3>"
+	Goto ReadBCC
+
+if "$(_PORTCHARS)" NE ""
+	Assign v_FieldData "$(v_FieldData)$(_PORTCHARS)"
+
+if "$(s_Connection)" EQ "SERIAL"
+	Sleep 50
+
+Goto ReadFieldData
+
+:ReadBCC
+
+// Skip BCC if we are on IP
+if "$(s_Connection)" EQ "IP"
+	Goto FinishedReceiving
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE ""
+	Goto FinishedReceiving
+
+if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+	Goto FinishedReceiving
+
+Goto ReadBCC
+
+:FinishedReceiving
+
+Echo Rx: $(ReceivedRec)
+
+// Skip ACK if we are on IP
+if "$(s_Connection)" EQ "IP"
+	Goto SkipSendingACK
+
+Echo Tx: <#6>
+Send <#6>
+
+:SkipSendingACK
+
+if "$(RecType)" EQ "LC"
+	Call HandleLinkConfiguration
+
+if "$(RecType)" EQ "LS"
+	Call HandleLinkStart
+
+if "$(RecType)" EQ "LA"
+	Call HandleLinkAlive
+
+if "$(RecType)" EQ "LE"
+	Call HandleLinkStop
+
+if "$(RecType)" EQ "RE"
+	Call HandleRE
+
+// If we were sending, return back to SendRecord.
+if "$(f_Sending)" EQ "TRUE"
+	Return
+if "$(f_WaitingForLinkStart)" EQ "TRUE"
+	Return
+
+Exit
+
+:ReceiveRecord_Timeout
+
+Echo Er: Timeout while receiving record
+Echo Rx: $(ReceivedRec)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessField
+;	Store the FieldData in the correct variable.
+:ProcessField
+
+if "$(v_FieldID)" EQ "DA"
+	Assign in_Date "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "TI"
+	Assign in_Time "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "RN"
+	Assign in_Room "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "RS"
+	Assign in_RoomStatus "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A1"
+	Assign in_Cfg1 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A2"
+	Assign in_Cfg2 "$(v_FieldData)"
+
+if "$(v_FieldID)" EQ "A3"
+	Assign in_Cfg3 "$(v_FieldData)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClearFieldData
+;	Clear out all the data from the fields otherwise we don't know if the data
+;	in the field is from this record or the next.
+:ClearFieldData
+
+Assign in_Date ""
+Assign in_Time ""
+Assign in_Room ""
+Assign in_RoomStatus ""
+Assign in_Cfg1 ""
+Assign in_Cfg2 ""
+Assign in_Cfg3 ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleRE
+;	Handle a Room Equipment message.
+:HandleRE
+
+	if "$(in_Room)" NE ""
+		Assign f_LinkAlive "TRUE"
+	if "$(in_Room)" NE ""	
+		Assign f_SentLinkRecords "TRUE"
+
+	if "$(in_RoomStatus)" NE ""
+		CreateRoomStatus "$(in_Room)" "$(in_RoomStatus)" ""
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  InvalidDateTime
+;   Wakeup Time/Date did not parse.
+:InvalidDateTime
+
+	Echo Er: Received invalid Date or Time - Record Ignored.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;	This is where we handle the sending of the record to the PMS and await the
+;	acknowledgement.
+:SendRecord
+
+	Assign f_Sending "TRUE"
+
+//	Send the Record
+	Echo Tx: $(SendRec)
+	Send $(SendRec)
+
+//	If we are IP then we don't check for an ACK.
+	if "$(s_Connection)" EQ "IP"
+		Goto GotAckToRec
+
+//	Wait for an ACK
+	StartWaitTimer 120
+
+:WaitForAckToRec
+
+	ReadFromPort 1
+
+//	If it's an STX we must receive the rest of the record.
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+//	If it's not blank echo it.
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+//	If it's an ACK then we can finish off.
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto GotAckToRec
+
+//	If it's a NAK then we need to resend the record.
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+//	If the timeout has expired then we need to send an ENQ.
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto TimeoutWaitingForACK
+
+	Goto WaitForAckToRec
+
+:GotAckToRec
+
+Return
+
+:TimeoutWaitingForACK
+
+//	If we've retried 3 times we discard the record and log an error
+	if "$(v_ACKRetries)" EQ "3"
+		Goto ACKRetriesExceeded
+
+//	Increment Retry count.
+	Assign v_ACKRetries $(v_ACKRetries) + 1
+
+	Echo Er: Timeout waiting for ACK
+	Echo Tx: <#5>
+	Send <#5>
+
+//	Restart wait timer and wait for ACK
+	StartWaittimer $(s_HowLongToWait)
+
+	Goto WaitForAckToRec
+
+:ACKRetriesExceeded
+
+	Echo Er: 3 successive ENQs failed. Discarding record.
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  GetDateTime
+;	Sets up the Date and Time variables with the current date and time.
+:GetDateTime
+
+	Assign Date "<_G_NOW:DATE:6:YYMMDD>"
+	Assign Time "<_G_NOW:TIME:6:HHMMSS>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkStart
+;	This sends a Link Start (LS) record to the PMS.
+:DoLinkStart
+
+	Call GetDateTime
+
+	Assign SendRec "LS|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkStop
+;	This sends a Link End (LE) record to the PMS.
+:DoLinkStop
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Return
+
+	Call GetDateTime
+
+	Assign SendRec "LE|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkStop
+;	Called when we receive a Link End (LE) from the PMS.
+:HandleLinkStop
+
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Return
+
+	Call GetDateTime
+
+	Assign SendRec "LE|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+	Assign f_LinkAlive "FALSE"
+	Assign f_SentLinkRecords "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoLinkAlive
+;	This sends a Link Alive (LA) record to the PMS.
+:DoLinkAlive
+
+	if "$(f_WaitingForLinkStart)" NE "TRUE"
+		Goto HLA_NotWaitingForLS
+
+	Call GetDateTime
+
+	Assign SendRec "LA|DA$(Date)|TI$(Time)|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkAlive
+;	This is called when we receive a Link Alive (LA) from the PMS. We need to
+;	check if we're waiting for an LS, if we are then we need to send an LA back
+;	otherwise we just flag our link as alive.
+:HandleLinkAlive
+
+	if "$(f_WaitingForLinkStart)" NE "TRUE"
+		Goto HLA_NotWaitingForLS
+
+	Call DoLinkAlive
+
+	Assign f_WaitingForLinkStart "FALSE"
+	Assign f_SentLinkRecords "TRUE"
+
+:HLA_NotWaitingForLS
+
+	Assign f_LinkAlive "TRUE"
+
+	if "$(s_RespondToLA)" EQ "TRUE"
+		Call DoLinkAlive
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkConfiguration
+;	Called when we receive a Link Configuration (LC) from the PMS
+:HandleLinkConfiguration
+
+	Echo If: PMS V#$(in_Cfg1) - IFC V#$(in_Cfg2) - FIAS Driver V#$(in_Cfg3)
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLinkStart
+;	This is called when we receive a Link Start (LS) from the PMS. We need to
+;	send Link Description (LD) and Link Record (LR) messages along with a Link
+;	Alive (LA) message to the PMS.
+:HandleLinkStart
+
+//	Reset our waiting for LinkStart flag.
+	Assign f_WaitingForLinkStart "FALSE"
+
+//	Reset our other flags as the link is not currently alive
+	Assign f_LinkAlive "FALSE"
+	Assign f_SentLinkRecords "FALSE"
+
+//	Send Link Description (LD) message.
+	Call GetDateTime
+
+	Assign SendRec "LD|DA$(Date)|TI$(Time)|IFPB|V#1.0|RT52|<#3>"
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+//	Send Link Record (LR) message for Room Equipment Status (RE).
+	Assign SendRec "LR|RIRE|FLRNRS|<#3>"
+	Assign SendRec "$(SendRec)"
+
+	if "$(s_Connection)" NE "IP"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_Connection)" NE "IP"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_Connection)" EQ "IP"
+		Assign SendRec "<#2>$(SendRec)"
+
+	Call SendRecord
+
+:HLS_LinkAlive
+
+	Assign f_SentLinkRecords "TRUE"
+
+
+	Call DoLinkAlive
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;	This will flag that the event is processed and exit the script.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;	This will flag that the event is processed and exit the script effectively
+;	ignoring the record.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

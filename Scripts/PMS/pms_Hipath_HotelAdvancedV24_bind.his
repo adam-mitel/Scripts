@@ -1,0 +1,675 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for EMULATING a Hicom 150E/H,
+;  Hicom 300E/H, HiPath 3000 or HiPath 4000 running HiPath Hotel Advanced.
+;
+;  Based on protocol described in HiPath Hotel Advanced V4.2
+;	(Reference No: A31003-G9742-H100-1-76D1)
+;
+;  Note: This is based on the RS-232 ENQ Mode (Without BIND) implementation 
+;        of the protocol and will NOT work over IP.
+;
+;                                                              pjh-060705
+;
+;  Note: This interface does not support Reservation Numbers
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define SendRec
+define ReceivedRec
+
+define RecType
+define MsgType
+
+define in_Extn
+define in_Status
+define in_Dummy
+define in_Dummy2
+define in_Dummy3
+define in_Dummy4
+define in_BCC
+define in_SystemID
+define in_CRDate
+define in_CRStartTime
+define in_CREndTime
+define in_CRMeterPulses
+define in_CRDialedNum
+define in_CRCost
+define in_CRDuration
+define in_duration
+define in_GuestName
+define in_Language
+define StartTime
+define EndTime
+define EndTimeHours
+define EndTimeMins
+define EndTimeSecs
+define DurHours
+define DurMins
+define DurSecs
+define Duration
+define GuestName
+define LangCode
+define WorkVal
+define f_Sending
+define f_Initialized
+
+; Pre-defined values
+define AppHandle
+define BlankName
+define BlankGroup
+define GroupNumber
+define ResNumber
+define ZeroLimit
+define BindRecord
+
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+:INIT
+
+; The values below are pre-defined values that are defined here to save time
+; later in the script. These should not be changed without discussion with
+; development!
+
+assign AppHandle "0000000000"
+assign BlankName "                                        "
+assign BlankGroup "                                        "
+assign GroupNumber "          "
+assign ResNumber "          "
+assign ZeroLimit "0000000000"
+assign BindRecord "0A100000000000000001"
+assign f_Sending "FALSE"
+
+assign f_Initialized "FALSE"
+
+OpenPort
+
+Call InitLink
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  InitLink
+;   Initialises the link.
+; ************************************************************************
+:InitLink
+
+;Call SendEOT
+
+:RetryInitLink
+
+Call SendENQ
+
+StartWaitTimer 10
+
+:IL_WaitForEOT
+
+ReadFromPort 1
+
+; If we get an STX then they are sending us a record so we need to receive
+; a record.
+if "$(_PORTCHARS)" EQ "<#2>"
+	Assign ReceivedRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+	Goto ReceiveRecord
+
+if "$(_PORTCHARS)" NE ""
+	Echo Rx: $(_PORTCHARS)
+
+; If we get an EOT then they have nothing to send us.
+if "$(_PORTCHARS)" EQ "<#4>"
+	Assign f_Initialized "TRUE"
+if "$(_PORTCHARS)" EQ "<#4>"
+	call SendBIND
+
+if "$(_PORTCHARS)" EQ "<#4>"
+	Goto IL_Done
+
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto RetryInitLink
+
+Goto IL_WaitForEOT
+
+:IL_Done
+
+Call SendEOT
+Return
+; ************************************************************************
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+assign StartTime <_EV_CALLTIME:TIME:2:HH> * 60
+assign StartTime $(StartTime) + <_EV_CALLTIME:TIME:2:MM>
+assign StartTime $(StartTime) * 60
+assign StartTime $(StartTime) + <_EV_CALLTIME:TIME:2:SS>
+
+assign EndTime $(StartTime) + <_EV_CALLDURATION:TIME:5:^SSS>
+assign EndTimeMins $(EndTime) / 60
+assign EndTimeHours $(EndTimeMins) / 60
+assign EndTimeMins $(EndTimeMins) % 60
+assign EndTimeSecs $(EndTime) % 60
+
+Echo StartTime = '$(StartTime), EndTime = '$(EndTime)', Duration = '<_EV_CALLDURATION:TIME:5:^SS>'
+
+assign in_Extn "$(_EV_EXTNNUMBER)"
+
+Assign SendRec "111<_EV_EXTNNUMBER:TEXT:6:LJ,SP>$(AppHandle)3010<_EV_CALLDATE:DATE:6:YYMMDD><_EV_CALLTIME:TIME:6:HHMMSS><EndTimeHours:TEXT:2:RJ,ZP><EndTimeMins:TEXT:2:RJ,ZP><EndTimeSecs:TEXT:2:RJ,ZP>0000<in_Extn:TEXT:6:LJ,SP>9   <_EV_CALLCHARGEPENCE:TEXT:5:RJ,ZP><_EV_CALLDIALLEDDIGITS:TEXT:16:LJ,SP>000000000000000<#3>"
+GenerateBCCChar "" "$(SendRec)"
+Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+Call SendRecord
+
+goto HandleOkAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;    Execution comes here periodically to poll for data.
+; ************************************************************************
+:PeriodicCheck
+
+Assign f_Sending "FALSE"
+
+; Send an ENQ
+Call SendENQ
+
+StartWaitTimer 10
+
+:PC_WaitForEOTToENQ
+
+ReadFromPort 1
+
+; If we get an STX then they are sending us a record so we need to receive
+; a record.
+if "$(_PORTCHARS)" EQ "<#2>"
+	Assign ReceivedRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+	Goto ReceiveRecord
+
+if "$(_PORTCHARS)" NE ""
+	Echo Rx: $(_PORTCHARS)
+
+; If we get an EOT then they have nothing to send us.
+if "$(_PORTCHARS)" EQ "<#4>"
+	Goto PC_Done
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto PC_Done
+
+Goto PC_WaitForEOTToENQ
+
+:PC_Done
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+Assign f_Sending "FALSE"
+ReadFromPort 1
+
+; If we get an STX then they are sending us a record so we need to receive
+; a record.
+if "$(_PORTCHARS)" EQ "<#2>"
+	Assign ReceivedRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+	Goto ReceiveRecord
+
+; Just echo what we got.
+if "$(_PORTCHARS)" NE ""
+  Echo Rx: $(_PORTCHARS)
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;    we reach this point when we have received an STX
+; ************************************************************************
+:ReceiveRecord
+
+; Read Msg Type
+ReadFromPort 2 2
+
+Assign MsgType "$(_PORTCHARS)"
+Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+; Read Rest of Message
+:ReadRecord
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+  Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" EQ "<#3>"
+  goto ReadBCC
+
+Goto ReadRecord
+
+:ReadBCC
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+  Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE ""
+  Goto FinishedReceiving
+
+Goto ReadBCC
+
+:FinishedReceiving
+
+; We have received the record so echo it.
+
+Echo Rx: $(ReceivedRec)
+
+; Send an ACK
+sleep 1500
+
+Echo Tx: <#6>
+Send <#6>
+
+; Now handle it.
+
+if "$(MsgType)" EQ "01"
+  Call CIORecord
+if "$(MsgType)" EQ "23"
+  Call UPRecord
+
+if "$(RecType)" EQ ""
+  Goto SkipProcessIncoming
+
+; Process the Record
+Assign _G_IN_RECORD "$(ReceivedRec)"
+
+ParseInRecord
+
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+  Echo Error with Received Record - Record ignored
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+  goto SkipProcessIncoming
+
+if "$(RecType)" EQ "CIO"
+  Call HandleCIORecord
+if "$(RecType)" EQ "UP"
+  Call HandleUPRecord
+
+:SkipProcessIncoming
+
+:RR_WaitAgainForEOT
+
+StartWaitTimer 10
+
+:RR_WaitForEOT
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ "<#2>"
+  Assign ReceivedRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+  Goto ReceiveRecord
+
+if "$(_PORTCHARS)" NE ""
+  Echo Rx: $(_PORTCHARS)
+
+if "$(_PORTCHARS)" EQ "<#4>"
+  Goto DoneReceiving
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Echo "Timed out waiting for EOT"
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Send <#5>
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Echo Tx: <#5>
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  goto RR_WaitAgainForEOT
+
+goto RR_WaitForEOT
+
+:DoneReceiving
+
+; If we were sending then restart ACK wait timer and return
+if "$(f_Sending)" EQ "TRUE"
+  StartWaitTimer 5
+if "$(f_Sending)" EQ "TRUE"
+  Return
+
+; Otherwise just exit
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+:CIORecord
+
+Assign RecType "CIO"
+AssignAsIs _G_IN_RECORDFORMAT "<#2>011<in_Extn:TEXT:6:LJ,SP><in_Dummy:TEXT:10:LJ,SP>00<in_Status:Text:1:LJ,SP><in_Language:TEXT:2:LJ,SP><in_GuestName:TEXT:40:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+:HandleCIORecord
+
+if "$(in_Status)" EQ "1"
+	CreateCheckIn "$(in_Extn)" "" "" "$(in_Language)" "$(in_GuestName)"
+if "$(in_Status)" EQ "2"
+	CreateCheckOut "$(in_Extn)" "" "" "$(in_Language)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+:UPRecord
+
+Assign RecType "UP"
+AssignAsIs _G_IN_RECORDFORMAT "<#2>231<in_Extn:TEXT:6:LJ,SP><in_Dummy:TEXT:10:LJ,SP><in_GuestName:TEXT:40:LJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+:HandleUPRecord
+
+CreateRoomUpdate "$(in_Extn)" "" "" "$(in_GuestName)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;    We arrive at this point when we have a record to send and we have
+;    built it ready to send.
+; ************************************************************************
+:SendRecord
+
+; Set a sending flag for use later
+  assign f_sending "TRUE"
+
+; Sleep for 500 ms to slow down sending.
+sleep 500
+
+; Send the record and display it
+Send $(SendRec)
+Echo Tx: $(SendRec)
+
+; Start the await ACK timer
+StartWaitTimer 5
+
+:AWAITACKTOREC
+
+ReadFromPort 1
+
+; Timer has expired so we're obviously not being sent anything. Resend...
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Goto SendRecord
+
+; If we haven't had a response go back and wait
+if "$(_PORTCHARS)" EQ ""
+  Goto AWAITACKTOREC
+
+; If we get an ACK, flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#6>"
+  Echo Rx: <#6>
+if "$(_PORTCHARS)" EQ "<#6>"
+  Goto GOTACKTOREC
+
+; If we get a NAK, resend the record.
+if "$(_PORTCHARS)" EQ "<#21>"
+  Echo Rx: <#21>
+if "$(_PORTCHARS)" EQ "<#21>"
+  Goto SendRecord
+
+; If we get an EOT, resend the record.
+if "$(_PORTCHARS)" EQ "<#4>"
+  Echo Rx: <#4>
+if "$(_PORTCHARS)" EQ "<#4>"
+  Goto SendRecord
+
+Goto AWAITACKTOREC
+
+:GOTACKTOREC
+; Record has been acknowledged send an EOT
+sleep 1000
+Send <#4>
+Echo Tx: <#4>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendEOT
+;    Send an EOT
+; ************************************************************************
+:SendEOT
+sleep 500
+Echo Tx: <#4>
+Send <#4>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendBIND
+;    Send a Bind Message
+; ************************************************************************
+:SendBIND
+sleep 500
+
+Assign SendRec "$(BindRecord)<#3>"
+GenerateBCCChar "" "$(SendRec)"
+Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+Call SendRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendENQ
+;    Send an ENQ
+; ************************************************************************
+:SendENQ
+sleep 500
+Echo Tx: <#5>
+Send <#5>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendACK
+;    Send an ACK
+; ************************************************************************
+:SendACK
+sleep 500
+Echo Tx: <#6>
+Send <#6>
+
+Return
+; ************************************************************************
+
+
+; ******************************************************************************
+;  HandleOKAndExit
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+; ******************************************************************************
+:HandleOKAndExit
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************

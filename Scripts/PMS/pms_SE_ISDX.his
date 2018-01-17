@@ -1,0 +1,215 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for sending callrecords by 
+;  emulating an ISDX PABX.
+;
+;                                                               pjh-300103
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+
+;
+; *** Variable definitions
+;
+
+define SendRec			// The record we build to send to Carahost
+define WorkVal			// General purpose work variable used at regular
+						//  intervals throughout the script.
+
+define Seq1
+define Seq2
+
+; ************************************************************************
+;  INIT
+;   Called at program start-up.  Gives you the opportunity to initialise
+;   any script variables.
+; ************************************************************************
+:INIT
+
+CreateAutoIncNumber SEQ 0 255
+
+OpenPort
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+; ************************************************************************
+:CallRecord
+
+Echo Tx: ID: $(_EV_ID) <_EV_CALLDATE:DATE:10:DD/MM/YYYY> <_EV_CALLTIME:TIME:8:HH:MM:SS> E-$(_EV_EXTNNUMBER) Digits:$(_EV_CALLDIALLEDDIGITS) Dur:<_EV_CALLDURATION:TIME:4:^SSSS> Cost:$(_EV_CALLCHARGEPENCE)
+
+GetNextAutoIncNumber SEQ
+Assign Seq1 $(_G_RESULT)
+
+GetNextAutoIncNumber SEQ
+Assign Seq2 $(_G_RESULT)
+
+GenISDXCallRecord "$(_EV_EXTNNUMBER)" "<_EV_CALLDATE:DATE:10:DD/MM/YYYY>" "<_EV_CALLTIME:TIME:8:HH:MM:SS>" "<_EV_CALLDURATION:TIME:4:^SSSS>" "$(Seq1)" "$(_EV_CALLCHARGEPENCE)" "$(_EV_CALLDIALLEDDIGITS)" "$(Seq2)"
+
+AssignAsIs SendRec $(_G_RESULT)
+
+; Send The Record
+Echo $(SendRec)
+Send $(SendRec)
+
+; Flag Handled
+FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+Goto IgnoreRecord
+; ******************************************************************************
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ******************************************************************************
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+Goto IgnoreRecord
+; ******************************************************************************
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a check in event
+;   to send.
+:Checkin
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a check out event
+;   to send.
+:Checkout
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a budget limit
+;   event to send.
+:BudgetLimit
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a room transfer
+;   event to send.
+:RoomTransfer
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have an extra guest
+;   event to send.
+:ExtraGuest
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a set or clear pin
+;   event to send.
+:PIN
+
+goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a set or clear ddi
+;   event to send.
+:DDI
+
+goto IgnoreRecord
+; ************************************************************************
+
+; ******************************************************************************
+;  IgnoreRecord
+;    This will flag that the event is processed and exit the script effectively
+;    ignoring the record.
+
+:IgnoreRecord
+  FLAGPROCESSED OK
+EXIT
+; ******************************************************************************
+

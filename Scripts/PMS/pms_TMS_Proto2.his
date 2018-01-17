@@ -1,0 +1,1007 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.3.0
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a PMS System
+;  which is using Proto 2.
+;
+;  Note: This interface does not support Reservation Numbers
+;
+;                                                              AU-20110719
+;
+;  Modifications - AU - 08/07/2015 - 50.0.3.0
+;	* Resolved issue where we occasionally sent a blank heart beat
+;
+;  Modifications - AU - 29/05/2014 - 50.0.2.0
+;	* Added option whether to parse names with underscores
+;	* Modified incoming records to clear down ReceivedRec after receive
+;	* Modified to send a Heartbeat immediately after receiving a record
+;
+;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;	* Updated to utilise V50 specific features
+;
+;  Modifications - AU - 22/08/2012
+;	* Resolved an issue with incoming Wakeup Calls
+;
+;  Modifications - AU - 07/06/2012
+;	* Resolved an issue with Message Waiting and Wakeup commands
+;	* Added option to set whether to process Message Waiting messages
+;
+;  Modifications - AU - 30/05/2012
+;	* Modified ReceiveRecord to switch ACK and Send polls after we
+;	  receive a record
+;	* Added logic to strip out all unwanted information from the Guest Name
+;	* Added logic for various other incoming events
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+define SendRec
+define ReceivedRec
+define RecType
+define WorkVal
+;
+define f_SendCount
+;
+define g_Duration
+;
+define s_MessageWaiting
+define s_ParseName
+;
+define in_ACKPol
+define in_SendPol
+define in_Dummy
+define in_Room
+define in_LNStatus
+define in_GuestName
+define in_DestRoom
+define in_BCC
+define in_Status
+define in_Wakeup
+;
+; ************************************************************************
+;  INIT
+;   This label is called at program startup.
+:INIT
+
+//	OPT: Set whether we want to process incoming Message Waiting events
+	Assign s_MessageWaiting "FALSE"
+
+
+//	OPT: Set whether we want to split the guest name up if it is separated
+//	     by underscores
+	Assign s_ParseName "FALSE"
+
+//	Comment out the next line if we are using IP.
+//	OpenPort
+
+	Assign in_SendPol "<#3>"
+	Assign in_ACKPol "<#4>"
+
+	Assign SendRec "<#22>"
+	Call SendRecord
+
+	Sleep 1000
+
+Goto PeriodicCheck
+; ************************************************************************
+
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
+:PORT_OPENED
+
+	Assign in_SendPol "<#3>"
+	Assign in_ACKPol "<#4>"
+
+	Assign SendRec "<#22>"
+	Call SendRecord
+
+Goto PeriodicCheck
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   This label is executed by the program when we have a Call Record to
+;   send.
+:CallRecord
+
+	Assign g_Duration "<_EV_CALLDURATION:TIME:4:^SSSS>"
+	Assign g_Duration $(g_Duration) / 6
+
+	if $(g_Duration) LT 1
+		Assign g_Duration 1
+
+	Assign SendRec "R$(_EV_ROOMNUMBER)\\G<_EV_CALLCHARGEPENCE:TEXT:6:RJ,ZP>_<_EV_CALLTIME:TIME:4:HHMM>_<g_Duration:TEXT:5:>_<_EV_CALLDIALLEDDIGITS:TEXT:18:>_0\\"
+	GenerateBCCChar "" "$(SendRec)"
+	Assign SendRec "$(in_SendPol)$(in_ACKPol)$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   This label is executed by the program when we have a Room Status
+;   event to send.
+:RoomStatus
+
+	Assign SendRec "R$(_EV_ROOMNUMBER)\\S$(_EV_RSCODE)_<_EV_EVENTTIME:TIME:4:HHMM>\\"
+	GenerateBCCChar "" "$(SendRec)"
+	Assign SendRec "$(in_SendPol)$(in_ACKPol)$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   This label is executed by the program when we have a Minibar Event
+;   to send.
+:Minibar
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   This label is executed by the program when we have a Message Waiting
+;   event to send.
+:MessageWaiting
+
+	Assign WorkVal "+"
+	if "$(_EV_MWSTATE)" NE "TRUE"
+		Assign WorkVal "-"
+
+	Assign SendRec "R$(_EV_ROOMNUMBER)\\V$(WorkVal)\\"
+	GenerateBCCChar "" "$(SendRec)"
+	Assign SendRec "$(in_SendPol)$(in_ACKPol)$(SendRec)$(_G_BCC)"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   This label is executed by the program when we have a Wakeup Call
+;   event to send.
+:WakeupCall
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   This label is executed by the program when we have a Check In event
+;   to send.
+:Checkin
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   This label is executed by the program when we have a Check Out event
+;   to send.
+:Checkout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   This label is executed by the program when we have a Room Update
+;   event to send.
+:RoomUpdate
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   This label is executed by the program when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   This label is executed by the program when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   This label is executed by the program when we have an Extra Guest
+;   event to send.
+:ExtraGuest
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   This label is executed by the program when we have a do not disturb
+;   event to send.
+:DoNotDisturb
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   This label is executed by the program when we have a pin event to send.
+:PIN
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   This label is executed by the program when we have a DDI event to send.
+:DDI
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
+:PeriodicCheck
+
+	Assign WorkVal "$(in_SendPol)"
+
+	if "$(WorkVal)" EQ ""
+		Call PeriodicCheck_GetSendPol
+
+	if "$(WorkVal)" EQ ""
+		Echo Er: No SendPol or ACKPol for Heartbeat
+	if "$(WorkVal)" EQ ""
+		Exit
+
+	Assign SendRec "$(WorkVal)"
+	Call SendRecord
+
+	Assign WorkVal ""
+
+Exit
+
+:PeriodicCheck_GetSendPol
+
+	if "$(in_ACKPol)" EQ "<#3>"
+		Assign in_SendPol "<#4>"
+	if "$(in_ACKPol)" EQ "<#4>"
+		Assign in_SendPol "<#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckIncoming
+;   This label is executed by the program periodically to check incoming
+;   messeges.
+:CheckIncoming
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" EQ "<#22>"
+		Assign ReceivedRec "$(_PORTCHARS)"
+	if "$(_PORTCHARS)" EQ "<#22>"
+		Goto ReceiveRecord_INIT
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+;   This label is called when we have received an ETX or EOT within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+	Assign _G_IN_RECORDFORMAT ""
+	Assign RecType ""
+
+	Assign in_ACKPol ""
+	Assign in_SendPol ""
+	Assign in_Room ""
+	Assign in_LNStatus ""
+	Assign in_GuestName ""
+	Assign in_DestRoom ""
+	Assign in_BCC ""
+	Assign in_Status ""
+
+	StartWaitTimer 5
+
+	ReadFromPort 1 2
+
+:ReceiveRecord_SkipRead
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Assign in_ACKPol "<#3>"
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Assign in_SendPol "<#4>"
+
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Assign in_ACKPol "<#4>"
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Assign in_SendPol "<#3>"
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReceiveRecord_GotACK
+
+:ReceiveRecord_GetRecType
+
+	Sleep 10
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "R"
+		Assign RecType "R"
+	if "$(_PORTCHARS)" EQ "C"
+		Assign RecType "C"
+	if "$(_PORTCHARS)" EQ "Z"
+		Assign RecType "Z"
+
+:ReceiveRecord_ReadTheRest
+
+	Sleep 10
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Goto ReceiveRecord_FinishedReceiving
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto ReceiveRecord_Timeout
+
+	Goto ReceiveRecord_ReadTheRest
+
+:ReceiveRecord_FinishedReceiving
+
+	Echo Rx: $(ReceivedRec)
+
+	if $(RecType) EQ "R"
+		Call RRecordFormat
+	if $(RecType) EQ "R"
+		Goto ReceiveRecord_FormatAssigned
+
+	if $(RecType) EQ "Z"
+		Call ZRecordFormat
+	if $(RecType) EQ "Z"
+		Goto ReceiveRecord_FormatAssigned
+
+	if $(RecType) EQ "C"
+		Call CRecordFormat
+	if $(RecType) EQ "C"
+		Goto ReceiveRecord_FormatAssigned
+
+	if "$(RecType)" EQ "L"
+		Goto ReceiveRecord_FormatAssigned
+	if "$(RecType)" EQ "WC"
+		Goto ReceiveRecord_FormatAssigned
+	if "$(RecType)" EQ "WS"
+		Goto ReceiveRecord_FormatAssigned
+
+	Echo Er: Unknown RecType "$(RecType)" - Skipping Record
+
+	Goto ReceiveRecord_SendACK
+
+:ReceiveRecord_FormatAssigned
+
+	if "$(_G_IN_RECORDFORMAT) EQ ""
+		Echo Er: Unknown message format - Skipping Record
+	if "$(_G_IN_RECORDFORMAT) EQ ""
+		Goto ReceiveRecord_SendACK
+
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	parseInRecord
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Er: Error during parsing - Skipping Record
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto ReceiveRecord_SendACK
+
+:ReceiveRecord_ParseName
+
+	if "$(s_ParseName)" NE "TRUE"
+		Goto ReceiveRecord_ProcessEvent
+
+	if "$(in_GuestName)" EQ ""
+		Goto ReceiveRecord_ProcessEvent
+
+//	Replace colons with spaces
+	ReplaceStr "$(in_GuestName)" ":" " " "TRUE" "FALSE"
+	Assign in_GuestName "$(_G_RESULT)"
+
+//	Replace the first underscore with a colon
+	ReplaceStr "$(in_GuestName)" "_" ":" "FALSE" "TRUE"
+	Assign in_GuestName "$(_G_RESULT)"
+
+//	Locate the position of the first underscore
+	StrPos "_" "$(in_GuestName)"
+	Assign f_CharPos "$(_G_RESULT)"
+
+//	If there isn't another one replace the colon with a space
+	if "$(f_CharPos)" EQ "0"
+		ReplaceStr "$(in_GuestName)" ":" " " "TRUE" "FALSE"
+	if "$(f_CharPos)" EQ "0"
+		Assign in_GuestName "$(_G_RESULT)"
+	if "$(f_CharPos)" EQ "0"
+		Return
+
+//	If there is another one everything before it is the name
+	Assign f_CharPos $(f_CharPos) - 1
+	CopySubStr "$(in_GuestName)" "1" "$(f_CharPos)"
+	Assign in_GuestName "$(_G_RESULT)"
+
+	ReplaceStr "$(in_GuestName)" ":" " " "TRUE" "FALSE"
+	Assign in_GuestName "$(_G_RESULT)"
+
+:ReceiveRecord_ProcessEvent
+
+	if "$(RecType)" EQ "R"
+		Call ProcessRRecord
+	if "$(RecType)" EQ "Z"
+		Call ProcessZRecord
+	if "$(RecType)" EQ "C"
+		Call ProcessCRecord
+	if "$(RecType)" EQ "L"
+		Call ProcessLRecord
+	if "$(RecType)" EQ "WC"
+		Call ProcessWRecord
+	if "$(RecType)" EQ "WS"
+		Call ProcessWRecord
+
+:ReceiveRecord_SendACK
+
+	Call SendACK
+
+	Assign WorkVal "$(in_SendPol)"
+
+	if "$(WorkVal)" EQ "<#3>"
+		Assign in_SendPol "<#4>"
+	if "$(WorkVal)" EQ "<#3>"
+		Assign in_ACKPol "<#3>"
+
+	if "$(WorkVal)" EQ "<#4>"
+		Assign in_SendPol "<#3>"
+	if "$(WorkVal)" EQ "<#4>"
+		Assign in_ACKPol "<#4>"
+
+	Assign WorkVal ""
+	Assign ReceivedRec ""
+
+Goto PeriodicCheck
+
+:ReceiveRecord_GotACK
+
+	Echo Rx: $(ReceivedRec)
+
+	Assign WorkVal "$(in_SendPol)"
+
+Exit
+
+:ReceiveRecord_Timeout
+
+	Echo Rx: $(ReceivedRec)
+	Echo Er: Timeout waiting for record.
+
+Exit
+
+:ReceiveRecord_INIT
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	Echo Rx: $(ReceivedRec)
+
+	Assign in_SendPol "<#3>"
+	Assign in_AckPol "<#4>"
+
+	Call SendAck
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RRecordFormat
+;    Sets up the expected format for the R Type record.
+:RRecordFormat
+
+	ContainsSTR "\\I\\" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:>\\N<in_GuestName:TEXT:255:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+  	ContainsSTR "\\X" "$(ReceivedRec)" "FALSE"
+  	if "$(_G_RESULT)" EQ "TRUE"
+    		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:><in_GuestName:TEXT:255:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+  	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+  	ContainsSTR "\\N\\" "$(ReceivedRec)" "FALSE"
+  	if "$(_G_RESULT)" EQ "TRUE"
+    		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:><in_GuestName:TEXT:255:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+  	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+  	ContainsSTR "\\O\\" "$(ReceivedRec)" "FALSE"
+  	if "$(_G_RESULT)" EQ "TRUE"
+    		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+  	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsSTR "\\B\\" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:5:>\\<in_LNStatus:TEXT:1:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsSTR "\\U\\" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:5:>\\<in_LNStatus:TEXT:1:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsSTR "\\A\\" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign RecType "WC"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:5:>\\A\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsSTR "\\A" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign RecType "WS"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:5:>\\A<in_Wakeup:TIME:4:HHMM>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+  	ContainsSTR "\\L\\" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign RecType "L"
+  	if "$(_G_RESULT)" EQ "TRUE"
+    		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:LJ,SP><in_Status:TEXT:1:LJ,SP>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+  	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+  	ContainsSTR "\\C\\" "$(ReceivedRec)" "FALSE"
+  	if "$(_G_RESULT)" EQ "TRUE"
+    		Goto CRECORD
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ZRecordFormat
+;    Sets up the expected format for the Z Type record.
+:ZRecordFormat
+
+	ContainsSTR "\\I\\" "<ReceivedRec:TEXT:13:LJ,SP>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>Z+\\R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:>\\N<in_GuestName:TEXT:255:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsSTR "\\O\\" "<ReceivedRec:TEXT:13:LJ,SP>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>Z+\\R<in_Room:TEXT:4:>\\<in_LNStatus:TEXT:1:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CRecordFormat
+;    Sets up the expected format for the room transfer record.
+:CRecordFormat
+
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Dummy:TEXT:2:LJ,SP>C<in_Room:TEXT:4:>_<in_DestRoom:TEXT:4:>_<in_GuestName:TEXT:255:>\\<in_BCC:TEXT:1:LJ,SP><#13>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessRRecord
+;   This label is called when we need to create events for an R record
+:ProcessRRecord
+
+	if "$(in_LNStatus)" EQ "I"
+		Echo Info: Creating Checkin for Room $(in_Room) with the name $(in_GuestName).
+	if "$(in_LNStatus)" EQ "I"
+		CreateCheckIn "$(in_Room)" "" "" "" "<in_GuestName:TEXT:50:AN>"
+	if "$(in_LNStatus)" EQ "I"
+		Return
+
+	if "$(in_LNStatus)" EQ "O"
+		Echo Info: Creating Checkout for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "O"
+		CreateCheckOut "$(in_Room)"
+	if "$(in_LNStatus)" EQ "O"
+		Return
+
+	if "$(in_LNStatus)" EQ "B"
+		Echo If: Setting Class of Service to Barred for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "B"
+	        CreateCOS "$(in_Room)" "" "TRUE" "FALSE" "TRUE" "TRUE"
+	if "$(in_LNStatus)" EQ "B"
+		Return
+
+	if "$(in_LNStatus)" EQ "U"
+		Echo If: Setting Class of Service to Unbarred for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "U"
+	        CreateCOS "$(in_Room)" "" "TRUE" "TRUE" "TRUE" "TRUE"
+	if "$(in_LNStatus)" EQ "U"
+		Return
+
+	if "$(in_LNStatus)" EQ "X"
+		Echo Info: Creating Room Update for Room $(in_Room) with the name $(in_GuestName).
+	if "$(in_LNStatus)" EQ "X"
+		CreateRoomUpdate "$(in_Room)" "" "" "<in_GuestName:TEXT:50:AN>"
+	if "$(in_LNStatus)" EQ "X"
+		Return
+
+	if "$(in_LNStatus)" EQ "N"
+		Echo Info: Creating Room Update for room $(in_Room) with the name $(in_GuestName).
+	if "$(in_LNStatus)" EQ "N"
+		CreateRoomUpdate "$(in_Room)" "" "" "<in_GuestName:TEXT:50:AN>"
+	if "$(in_LNStatus)" EQ "N"
+		Return
+
+:ProcessRRecord_UnknownLNStatus
+
+	Echo Er: No Process Commands for LNStatus "$(in_LNStatus)"
+  
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessZRecord
+;   This label is called when we need to create events for a Z record
+:ProcessZRecord
+
+	if "$(in_LNStatus)" EQ "I"
+		Echo Info: Creating Room Update for Room $(in_Room) with the name $(in_GuestName).
+	if "$(in_LNStatus)" EQ "I"
+		CreateRoomUpdate "$(in_Room)" "" "" "<in_GuestName:TEXT:50:AN>"
+	if "$(in_LNStatus)" EQ "I"
+		Return
+
+	if "$(in_LNStatus)" EQ "O"
+		Echo Info: Creating Checkout for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "O"
+		CreateCheckOut "$(in_Room)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessCRecord
+;   This label is called when we need to create events for a C record
+:ProcessCRecord
+
+	Echo Info: Transferring Room $(in_Room) to Room $(in_DestRoom).
+	CreateRoomTransfer "$(in_Room)" "$(in_DestRoom)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessLRecord
+;   This label is called when we need to create events for an L record
+:ProcessLRecord
+
+	if "$(s_MessageWaiting)" NE "TRUE"
+		Return
+
+	if "$(in_LNStatus)" EQ "+"
+		Echo If: Creating Message Waiting TRUE for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "+"
+		CreateMessageWaiting "$(in_Room)" "TRUE"
+
+	if "$(in_LNStatus)" EQ "-"
+		Echo If: Creating Message Waiting FALSE for Room $(in_Room).
+	if "$(in_LNStatus)" EQ "-"
+		CreateMessageWaiting "$(in_Room)" "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ProcessWRecord 
+;   This label is called when we need to create wakeup events
+:ProcessWRecord
+
+	if "$(RecType)" EQ "WS"
+		CreateSetWakeup "$(in_Room)" "" "<in_Wakeup:TIME:4:HHMM>"
+
+	if "$(RecType)" EQ "WC"
+		CreateClearAllWakeup "$(in_Room)"
+
+Return 
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Assign f_SendCount "0"
+
+:SendRecord_Send
+
+	Assign f_SendCount $(f_SendCount) + 1
+
+	if $(f_SendCount) GT 3
+		Goto SendRecord_Fail
+
+	Send $(SendRec)<#13>
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 10
+
+:SendRecord_WaitForACK
+
+	Sleep 100
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto SendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Goto SendRecord_GotACK
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord_Send
+
+	Goto SendRecord_WaitForACK
+
+:SendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Assign in_SendPol "<#3>"
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Assign in_ACKPol "<#4>"
+
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Assign in_SendPol "<#4>"
+	if "$(_PORTCHARS)" EQ "<#4>"
+		Assign in_ACKPol "<#3>"
+
+	ReadFromPort 1 2
+
+	if "$(_PORTCHARS)" NE "<#13>"
+		Goto ReceiveRecord_SkipRead
+  
+Return
+
+:SendRecord_Fail
+
+	Echo Er: Failed to send Call Record 3 times, switching Send and ACK polls
+
+	Assign WorkVal "$(in_SendPol)"
+
+	if "$(WorkVal)" EQ "<#3>"
+		Assign in_SendPol "<#4>"
+	if "$(WorkVal)" EQ "<#3>"
+		Assign in_ACKPol "<#3>"
+
+	if "$(WorkVal)" EQ "<#4>"
+		Assign in_SendPol "<#3>"
+	if "$(WorkVal)" EQ "<#4>"
+		Assign in_ACKPol "<#4>"
+
+	Assign WorkVal ""
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendACK
+;   Sends an Acknowledgement
+:SendACK
+
+	Send $(in_ACKPol)<#13>
+	Echo Tx: $(in_ACKPol)<#13>
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
+:HandleOKAndExit
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+
+Exit
+; ************************************************************************

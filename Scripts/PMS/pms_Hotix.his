@@ -1,0 +1,552 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to an HOTIX PMS.
+;
+;  Note: This interface does not support Reservation Numbers
+;
+;
+;                                                               ph-210301
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define SendRec
+define ReceiveRec
+define RecType
+
+define f_sending
+define received_rec_type
+define dummy_1
+define dummy_2
+define dummy_3
+
+define in_RoomNumber
+define in_GuestName
+define in_GuestTitle
+define in_Language
+define in_BCC
+define in_DestRoom
+define in_TAXAmount
+define in_WKAct
+define in_WKTime
+
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when we have a call record to
+;   send.
+:INIT
+
+assign received_rec_type ""
+assign f_sending "FALSE"
+
+OpenPort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+assign dummy_1 ""
+assign dummy_2 "<_G_NOW:TIME:4:HHMM>"
+assign SendRec "<#2>TIC<_EV_ROOMNUMBER:TEXT:10:LJ,SP><dummy_1:TEXT:125:SP><_EV_CALLDATE:DATE:6:YYMMDD><_EV_CALLTIME:TIME:4:HHMM><_EV_CALLDIALLEDDIGITS:TEXT:16:LJ,SP>00000<_EV_CALLDURATIONSECS:TEXT:5:LJ,SP><_EV_CALLCHARGEPENCE:TEXT:10:LJ,SP>          TEL             <_G_NOW:DATE:6:YYMMDD>$(dummy_2)"
+GenerateBCCChar "HEXString" "$(SendRec)"
+assign SendRec "$(SendRec)$(_G_BCC)<#3>"
+
+echo Current Call: <_EV_CALLDATE:DATE:8:DD/MM/YY> <_EV_CALLTIME:TIME:5:HH:MM> ID: <_EV_ID:TEXT:5:RJ,ZP>
+
+Call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+assign dummy_1 ""
+assign dummy_2 "<_G_NOW:TIME:4:HHMM>"
+assign SendRec "<#2>ETG<_EV_ROOMNUMBER:TEXT:10:LJ,SP><dummy_1:TEXT:197:SP><_G_NOW:DATE:6:YYMMDD>$(dummy_2)"
+GenerateBCCChar "HEXString" "$(SendRec)"
+assign SendRec "$(SendRec)$(_G_BCC)<#3>"
+Call SendRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+
+; Read the next character, it is the record type.
+ReadFromPort 3
+
+; if it is not blank, add it to the record
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+; If it is blank, go back to read.
+if "$(_PORTCHARS)" EQ ""
+  goto ReceiveRecord
+
+; Store the record type
+assign received_rec_type "$(_PORTCHARS)"
+
+; Test the record type and call the setup handlers
+assign RecType ""
+if "$(received_rec_type)" EQ "INP"
+  call INPRECORD
+if "$(received_rec_type)" EQ "OUT"
+  call OUTRECORD
+if "$(received_rec_type)" EQ "MOD"
+  call MODRECORD
+if "$(received_rec_type)" EQ "DEL"
+  call DELRECORD
+if "$(received_rec_type)" EQ "TAX"
+  call TAXRECORD
+if "$(received_rec_type)" EQ "REV"
+  call REVRECORD
+
+:ContinueReceiving
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" EQ "<#3>"
+  goto STOPRECEIVING
+
+goto ContinueReceiving
+
+:STOPRECEIVING
+
+Echo Rx: $(ReceiveRec)
+Send <#6>
+Echo Tx: <#6>
+
+if "$(RecType)" EQ ""
+  goto SkipProcessIncoming
+
+; Extract the fields from the record
+assign _G_IN_RECORD "$(ReceiveRec)"
+ParseInRecord
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+  Echo Error with Received Record - Record ignored
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+	goto SkipProcessIncoming
+
+if "$(RecType)" EQ "INP"
+   call HandleINPRecord
+if "$(RecType)" EQ "OUT"
+   call HandleOUTRecord
+if "$(RecType)" EQ "MOD"
+   call HandleMODRecord
+if "$(RecType)" EQ "DEL"
+   call HandleDELRecord
+if "$(RecType)" EQ "TAX"
+   call HandleTAXRecord
+if "$(RecType)" EQ "REV"
+   call HandleREVRecord
+
+:SkipProcessIncoming
+
+; If we are receiving part way through sending a record, we need to setup
+; the wait timer again and return.
+if "$(f_sending)" EQ "TRUE"
+  StartWaitTimer 10
+if "$(f_sending)" EQ "TRUE"
+  Return
+
+; If we are not part way through sending we need to exit the script.
+Exit
+
+; ************************************************************************
+;  SendRecord
+;    We arrive at this point when we have a record to send and we have
+;    built it ready to send.
+; ************************************************************************
+:SendRecord
+
+; Set a sending flag for use later
+assign f_sending "TRUE"
+
+; Send the record and dislpay it
+Send $(SendRec)
+Echo Tx: $(SendRec)
+
+; Start the await ACK timer
+StartWaitTimer 10
+
+:AWAITACKTOREC
+
+ReadFromPort 1
+
+; Timer has expired so we're obviously not being sent anything.  Quit
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Goto SendRecord
+
+; If we haven't had a response go back and wait
+if "$(_PORTCHARS)" EQ ""
+  Goto AWAITACKTOREC
+
+; If we get an ACK flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#6>"
+  Echo Rx: <#6>
+if "$(_PORTCHARS)" EQ "<#6>"
+  CALL HANDLEOK
+if "$(_PORTCHARS)" EQ "<#6>"
+  Return
+
+; If we get an STX, we need to receive an incoming record
+if "$(_PORTCHARS)" EQ "<#2>"
+  assign ReceiveRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+  call ReceiveRecord
+
+Goto AWAITACKTOREC
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+assign f_sending "FALSE"
+
+; Read a character
+ReadFromPort 1
+
+; If there is one and it is STX, start the receive record with it.
+if "$(_PORTCHARS)" EQ "<#2>"
+  assign ReceiveRec "<#2>"
+if "$(_PORTCHARS)" EQ "<#2>"
+  goto ReceiveRecord
+
+; If there are no characters, we have finished
+if "$(_PORTCHARS)" NE ""
+  Echo Rx: $(_PORTCHARS)
+
+; Release back to the program, we have not received an STX
+Exit
+
+; ************************************************************************
+; INPRECORD
+;  Setup for receiving a Checkin record
+:INPRECORD
+
+  assign RecType "INP"
+  assignasis _G_IN_RECORDFORMAT "<#2>INP<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:9:LJ,SP><in_GuestName:TEXT:20:LJ,SP><dummy_2:TEXT:15:LJ,SP><in_GuestTitle:TEXT:3:LJ,SP><in_Language:TEXT:10:LJ,SP><dummy_3:TEXT:150:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; OUTRECORD
+;  Setup for receiving a checkout record
+:OUTRECORD
+
+  assign RecType "OUT"
+  assignasis _G_IN_RECORDFORMAT "<#2>OUT<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:205:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; MODRECORD
+;  Setup for receiving a room update record
+:MODRECORD
+
+  assign RecType "MOD"
+  assignasis _G_IN_RECORDFORMAT "<#2>MOD<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:9:LJ,SP><in_GuestName:TEXT:20:LJ,SP><dummy_2:TEXT:15:LJ,SP><in_GuestTitle:TEXT:3:LJ,SP><in_Language:TEXT:10:LJ,SP><dummy_3:TEXT:150:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; DELRECORD
+;  Setup for receiving a room transfer record
+:DELRECORD
+
+; Query Guest Name on Source Room.
+  QueryGuestName "$(in_Room)"
+  Assign in_GuestName "$(_G_RESULT)"
+  
+  assign RecType "DEL"
+  assignasis _G_IN_RECORDFORMAT "<#2>DEL<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:109:LJ,SP><in_DestRoom:TEXT:10:LJ,SP><dummy_2:TEXT:86:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+  
+    // OPT: If we should create a Room Update to force the 
+  // DefinityPMS to write the correct room number after transfer
+  // uncomment the following line.
+  ;CreateRoomUpdate "$(in_RoomNumber)" "" "" "$(in_GuestName), $(in_GuestTitle)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; TAXRECORD
+;  Setup for receiving a tax (COS) record
+:TAXRECORD
+
+  assign RecType "TAX"
+  assignasis _G_IN_RECORDFORMAT "<#02>TAX<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:125:LJ,SP><in_TAXAmount:TEXT:5:LJ,SP><dummy_2:TEXT:77:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; REVRECORD
+;  Setup for receiving a wakeup set/clear record
+:REVRECORD
+
+  assign RecType "REV"
+  assignasis _G_IN_RECORDFORMAT "<#02>REV<in_RoomNumber:TEXT:10:LJ,SP><dummy_1:TEXT:67:LJ,SP><in_WKAct:TEXT:10:LJ,SP><in_WKTime:TEXT:4:LJ,SP><dummy_2:TEXT:126:LJ,SP><in_BCC:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleINPRecord
+;    Creates a checkin event for the INP record we have just received.
+:HandleINPRecord
+  CreateCheckin "$(in_RoomNumber)" "" "" "$(in_Language)" "$(in_GuestName), $(in_GuestTitle)"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleOUTRecord
+;    Creates a checkout event for the OUT record we have just received.
+:HandleOUTRecord
+  CreateCheckout "$(in_RoomNumber)" "" "" ""
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleMODRecord
+;    Creates a room update event for the MOD record we have just received.
+:HandleMODRecord
+  CreateRoomUpdate "$(in_RoomNumber)" "" "" "$(in_GuestName), $(in_GuestTitle)"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDELRecord
+;    Creates a room transfer event for the DEL record we have just received.
+:HandleDELRecord
+  CreateRoomTransfer "$(in_RoomNumber)" "$(in_DestRoom)"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleTAXRecord
+;    Creates a COS event for the TAX record we have just received.
+:HandleTAXRecord
+  assign dummy_1 "TRUE"
+  if "$(in_TAXAmount)" EQ "00000"
+    assign dummy_1 "FALSE"
+
+  CreateCOS "$(in_RoomNumber)" "" "TRUE" "$(dummy_1)" "TRUE" "TRUE" ""
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleREVRecord
+;    Creates a wakeup set/clear event for the REV record we have just 
+;    received.
+:HandleREVRecord
+  
+  if "$(in_WKAct)" EQ "PSV"
+    CreateSetWakeup "$(in_RoomNumber)" "" "$(in_WKTime)"
+  if "$(in_WKAct)" NE "PSV"
+    CreateClearAllWakeup "$(in_RoomNumber)" ""
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+  FLAGPROCESSED OK
+
+Exit
+; ************************************************************************
+
+; ************************************************************************
+; HANDLEOK
+;  Flag that the processing was successful.
+; ************************************************************************
+:HANDLEOK
+
+  FLAGPROCESSED OK
+
+RETURN
+
+; ************************************************************************
+; NotHandled
+;  Flag that the processing has not completed.
+; ************************************************************************
+:NotHandled
+
+  FlagProcessed NOT
+
+Return
