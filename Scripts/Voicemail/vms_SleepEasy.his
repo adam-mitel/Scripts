@@ -1,0 +1,622 @@
+; Coded For: 50.0.0.1
+; Script Version: 50.0.0.1
+; ************************************************************************
+;
+;  This is the HI configuration script for interfacing to a Mitel SX 2000
+;  voicemail system.
+;
+;                                                               ph-290200
+;
+;  Modifications - AU - 17/10/2013
+;	* Updated to utilise V50 specific features
+;
+; ************************************************************************
+;                     Copyright © 2013, TigerTMS Ltd.                     
+; ************************************************************************
+;
+
+define SendRec
+define ReceiveRec
+define RecType
+define WorkVal
+define f_sending
+define f_Flag
+define inRecType
+define in_Room
+define in_MWState
+define in_BCCChar
+define MW_State
+define ArrivalDate
+
+; ************************************************************************
+;  INIT
+;   The script is executed from this label when we have a call record to
+;   send.
+:INIT
+
+OpenPort
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallRecord
+;   The script is executed from this label when we have a call record to
+;   send.
+:CallRecord
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomStatus
+;   The script is executed from this label when we have a room status
+;   event to send.
+:RoomStatus
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  Minibar
+;   The script is executed from this label when we have a minibar event
+;   to send.
+:Minibar
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  MessageWaiting
+;   The script is executed from this label when we have a message waiting
+;   event to send.
+:MessageWaiting
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  WakeupCall
+;   The script is executed from this label when we have a wakeup call
+;   event to send.
+:WakeupCall
+
+//goto HandleOKAndExit
+
+	if "$(_EV_WKACTION)" EQ "SET"
+		goto WKSET
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		goto WKCLEAR
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		goto WKCLEAR
+ 
+:WKSET
+; Build the record and its BCC character
+	assign SendRec "06\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\WSN\\TI<_EV_WKTIME:TIME:4:HHMM>\\"
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+	
+	call SendRecord
+	
+	goto WKDONE
+
+:WKCLEAR
+
+; Build the record and its BCC character
+;Echo DBG: Setting Dummy
+;	assign SendRec "06\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\WSN\\TI0001\\"
+;	GenerateBCCChar "" "$(SendRec)"
+;	assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+	
+;	call SendRecord
+	
+;Echo DBG: clearing wake up
+	assign SendRec "06\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\WSC\\TI0000\\"
+	GenerateBCCChar "" "$(SendRec)"
+	assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+	
+	call SendRecord
+
+
+	goto WKDONE
+
+:WKDONE
+
+goto HandleOKAndExit
+
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkin
+;   The script is executed from this label when we have a checkin event to
+;   send.
+:Checkin
+
+; OPT: If, for some *highly* unlikely reason, you do not want checkin
+;      details to be sent to the exchange, uncomment this next line.
+//goto HandleOKAndExit
+
+; Build the record and its BCC character
+assign SendRec "04\\RNXXXXXX\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\AD00000\\DD00000\\GN<_EV_NAMEDISPLAY:TEXT:20:UC>\\GR000000\\TN000000\\NT000\\"
+GenerateBCCChar "7-bit" "$(SendRec)"
+assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+
+; Go on to send it
+Goto SendRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  Checkout
+;   The script is executed from this label when we have a checkout event
+;   to send.
+:Checkout
+
+; OPT: If, for some *highly* unlikely reason, you do not want checkout
+;      details to be sent to the exchange, uncomment this next line.
+//goto HandleOKAndExit
+
+assign SendRec "08\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\"
+GenerateBCCChar "7-bit" "$(SendRec)"
+assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+
+; Go on to send it
+Goto SendRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ClassOfService
+;   The script is executed from this label when we have a class of service
+;   event to send.
+:ClassOfService
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomUpdate
+;   The script is executed from this label when we have a room update
+;   event to send.
+:RoomUpdate
+//goto HandleOKAndExit
+
+; Build the record and its BCC character
+assign SendRec "05\\RM<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\DD00000\\GN<_EV_NAMEDISPLAY:TEXT:20:UC>\\GR000000\\TN000000\\NT000\\"
+GenerateBCCChar "7-bit" "$(SendRec)"
+assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+
+; Go on to send it
+Goto SendRecord
+
+
+; ************************************************************************
+
+
+; ************************************************************************
+;  BudgetLimit
+;   The script is executed from this label when we have a Budget Limit
+;   event to send.
+:BudgetLimit
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  RoomTransfer
+;   The script is executed from this label when we have a Room Transfer
+;   event to send.
+:RoomTransfer
+
+; OPT: If, for some *highly* unlikely reason, you do not want room
+;      transfer details to be sent to the exchange, uncomment this next
+;      line.
+//goto HandleOKAndExit
+
+; Build the record and its BCC character
+assign SendRec "07\\OR<_EV_ROOMNUMBER:TEXT:8:RJ,ZP>\\NR<_EV_TRDESTROOMNUMBER:TEXT:8:RJ,ZP>\\"
+GenerateBCCChar "" "$(SendRec)"
+assign SendRec "<#3>$(SendRec)$(_G_BCC)<#13>"
+
+; Go on to send it
+Goto SendRecord
+
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtraGuest
+;   The script is executed from this label when we have a Extra Guest
+;   event to send.
+:ExtraGuest
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DoNotDisturb
+;   The script is executed from this label when we have a Do Not Disturb
+;   event to send.
+:DoNotDisturb
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  PIN
+;   The script is executed from this label when we have a PIN event to
+;   send.
+:PIN
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  DDI
+;   The script is executed from this label when we have a DDI event to
+;   send.
+:DDI
+
+goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
+;  ReceiveRecord
+; ************************************************************************
+:ReceiveRecord
+
+; Allow up to 5 seconds for the record to come in.
+StartWaitTimer 5
+
+; We have already received the ACK and it is in ReceivedRec
+; Read the next character from the port, it is the record type.
+ReadFromPort 1 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" NE ""
+  Assign inRecType "$(_PORTCHARS)"
+
+if "$(inRecType)" EQ "<#13>"
+  Goto RespondToAck
+
+:ReceiveRec_SecondChar
+ReadFromPort 1 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" NE ""
+  Assign inRecType "$(inRecType)$(_PORTCHARS)"
+
+if "$(_PORTCHARS)" NE ""
+  Echo RecType = "$(inRecType)"
+  
+if "$(_PORTCHARS)" NE ""
+  call GetRecType
+
+:ReceiveRecord_ReadPort
+
+ReadFromPort 1
+
+; If there is one, add it to the record.
+if "$(_PORTCHARS)" NE ""
+  assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
+
+; If it is a CR, we are at the end
+if "$(_PORTCHARS)" EQ "<#13>"
+  goto FINISHEDRECEIVING
+
+; if our 5 seconds are up, ignore what we have so far.
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	goto QUITRECEIVING
+
+goto ReceiveRecord_ReadPort
+
+:FINISHEDRECEIVING
+
+if "$(RecType)" EQ ""
+  goto ACKANDIGNORERECORD
+
+; Extract the fields from the record and process them to create the events.
+assign _G_IN_RECORD "$(ReceiveRec)"
+ParseInRecord
+if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+	goto ReceiveError
+
+if "$(RecType)" EQ "MW"
+	call CreateMWEvent
+
+:RespondToAck
+;Echo Dbg: Responding to Blank ACK
+
+:ACKANDIGNORERECORD
+; these have been commented out to save logfile space.....
+;Echo Rx: $(ReceiveRec)$(in_BCCChar)
+  Send <#3><#13>
+;  Echo Tx: <#3><#13>
+
+goto SKIPQUIT
+
+:QUITRECEIVING
+
+Echo Rx: $(ReceiveRec)$(in_BCCChar)
+
+:SKIPQUIT
+
+; If we are receiving part way through sending a record, we need to setup
+; the wait timer again and return.
+if "$(f_sending)" EQ "TRUE"
+  Return
+
+; If we are not part way through sending we need to exit the script.
+Exit
+
+; ************************************************************************
+;  GetRecType
+;   We have received a single character ni $(_PORTCHARS) which is the
+;   record type.  We need to setup for the record.
+; ************************************************************************
+:GetRecType
+
+assign RecType ""
+; OPT: Comment these two lines if you want to ignore all incoming message
+;      waiting records.
+if "$(inRecType)" EQ "13"
+	call MWRECORD
+
+:SkipProcessIncoming
+
+Return
+
+:MWRECORD
+if "$(RecType)" EQ "MW"
+  assignasis _G_IN_RECORDFORMAT "<#3>\RN\RM<in_Room:TEXT:8:RJ,ZP>\GR000000\VF<in_MWstate:TEXT:1:SP>\<in_BCC:TEXT:1:ZP><#13>"
+Return
+
+; ************************************************************************
+;  ReceiveError
+;    Sent here when an error is found in the formatting of the record.
+; ************************************************************************
+:ReceiveError
+  Echo Error with Received Record - Record ignored
+Exit
+
+; ************************************************************************
+;  CreateMWEvent
+;    Creates the message waiting event.
+:CreateMWEvent
+
+assign MW_State "FALSE"
+if "<in_MWState:TEXT:1:>" EQ "A"
+	assign MW_State "TRUE"
+
+
+CreateMessageWaiting "$(in_Room)" "$(MW_State)"
+
+Return
+; ************************************************************************
+
+
+
+; ************************************************************************
+;  SendRecord
+;    We arrive at this point when we have a record to send and we have
+;    built it ready to send.
+; ************************************************************************
+:SendRecord
+
+; Set a sending flag for use later
+assign f_Flag "FALSE"
+assign f_sending "TRUE"
+
+; Wait for VMS to send us an ACK<T>
+:WaitForAck
+
+assign f_Flag "FALSE"
+
+ReadFromPort 1
+
+if "$(_PORTCHARS)" EQ ""
+  goto WaitForAck
+
+if "$(_PORTCHARS)" EQ "<#3>"
+  Goto SR_GotACK
+
+; Check for INIT
+if "$(_PORTCHARS)" EQ "<#22>"
+  Assign f_Flag "TRUE"
+if "$(_PORTCHARS)" EQ "<#22>"
+  Assign ReceiveRec "<#22>"
+if "$(_PORTCHARS)" EQ "<#22>"
+  call Respond_Init
+if "$(f_Flag)" EQ "TRUE"
+  Goto WaitForAck
+  
+if "$(_PORTCHARS)" NE ""
+  Echo Rx?: $(_PORTCHARS)
+  
+Goto WaitForAck 
+
+:SR_GotAck
+
+ReadFromPort 1 1
+
+if "$(_PORTCHARS)" NE "<#13>"
+  assign f_Flag "TRUE"
+if "$(_PORTCHARS)" NE "<#13>"
+  Assign ReceiveRec "<#3>$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE "<#13>"
+  Assign inRecType "$(_PORTCHARS)"
+if "$(_PORTCHARS)" NE "<#13>"
+  StartWaitTimer 10
+if "$(_PORTCHARS)" NE "<#13>"
+  Call ReceiveRec_SecondChar
+if "$(f_Flag)" EQ "TRUE"
+  Goto SendRecord  
+
+Echo Rx: <#3><#13>
+
+; Send the record and display it
+Send $(SendRec)
+Echo Tx: $(SendRec)
+
+; Start the await ACK timer
+StartWaitTimer 5
+
+:AWAITACKTOREC
+
+ReadFromPort 2
+
+; Timer has expired so we're obviously not being sent anything.  Quit
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+  Goto SENDRECORD
+
+; If we haven't had a response go back and wait
+if "$(_PORTCHARS)" EQ ""
+  Goto AWAITACKTOREC
+
+; If we get an ACK flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#3><#13>"
+  Echo Rx: <#6><#13>
+if "$(_PORTCHARS)" EQ "<#3><#13>"
+  CALL HANDLEOK
+if "$(_PORTCHARS)" EQ "<#3><#13>"
+  GOTO FINISHED
+
+; If we get a NAK flag as handled and exit.
+if "$(_PORTCHARS)" EQ "<#21><#13>"
+  Echo Rx: <#21><#13>
+if "$(_PORTCHARS)" EQ "<#21><#13>"
+  Goto SendRecord
+
+; If we get an INIT, we need to receive an incoming record
+if "$(_PORTCHARS)" EQ "<#22><#13>"
+  assign ReceiveRec "<#22><#13>"
+if "$(_PORTCHARS)" EQ "<#22><#13>"
+  call Respond_Init
+
+;Echo Dbg: AWAITACK - Portchars = "$(_PORTCHARS)"
+
+Goto AWAITACKTOREC
+
+; ************************************************************************
+;  CheckIncoming
+;    Execution is periodically carried out from here by the program to
+;    check for incoming data during idle times.
+; ************************************************************************
+:CheckIncoming
+
+assign f_sending "FALSE"
+
+; Read a character
+ReadFromPort 1
+
+; If there is one and it is INIT, respond to the INIT
+if "$(_PORTCHARS)" EQ "<#22>"
+  assign ReceiveRec "<#22>"
+if "$(_PORTCHARS)" EQ "<#22>"
+  goto Respond_Init
+
+if "$(_PORTCHARS)" EQ "<#3>"
+  assign ReceiveRec "<#3>"
+if "$(_PORTCHARS)" EQ "<#3>"
+  goto ReceiveRecord
+
+; if it is not the start of a record, display it and exit;
+if "$(_PORTCHARS)" EQ ""
+  Echo Rx: $(_PORTCHARS)
+if "$(_PORTCHARS)" EQ ""
+  Exit
+
+
+; If there are no characters, we have finished
+if "$(_PORTCHARS)" NE ""
+  Echo Rx: $(_PORTCHARS)
+
+
+; Release back to the program, we have not received an STX
+Exit
+
+; ************************************************************************
+;  Respond_Init
+;    Finish receiving the INIT record and respond to it.
+; ************************************************************************
+:Respond_Init
+
+  ;Read from the port, we are expectign a <#13> yet.
+  ReadFromPort 1 3
+  
+  ; if there isn't one, we exit the script.
+  if "$(_PORTCHARS)" EQ ""
+    Exit
+  
+  if "$(_PORTCHARS)" NE "<#13>"
+    Assign ReceiveRec "$(ReceiveRec)$(_PORTCHARS)"
+  if "$(_PORTCHARS)" NE "<#13>"
+    Echo Rx: $(ReceiveRec)
+  if "$(_PORTCHARS)" NE "<#13>"
+    Exit
+
+  Echo Rx: <#22><#13>
+  
+ ; Echo Dbg: Responding to INIT request
+  Send <#22><#13>
+  Echo Tx: <#22><#13>
+  ;Echo Dbg: Comms initialised  
+
+  if "$(f_Sending)" EQ "TRUE"
+    Return
+Exit
+; ************************************************************************
+
+; ************************************************************************
+;  SENDACK
+;   Sends an Ack (#3) character out of the port and echoes it to the
+;   communications display.
+
+:SENDACK
+  Send <#3><#13>
+  Echo Tx: <#3><#13>
+RETURN
+; ************************************************************************
+
+; ************************************************************************
+; HandleOKAndExit
+;  Flag that the processing was successful and exit the script.
+:HandleOKAndExit
+
+FLAGPROCESSED OK
+Exit
+; ************************************************************************
+
+; ************************************************************************
+; HANDLEOK
+;  Flag that the processing was successful.
+; ************************************************************************
+:HANDLEOK
+FLAGPROCESSED OK
+RETURN
+
+; ************************************************************************
+; FINISHED
+;  End the script.
+; ************************************************************************
+:FINISHED
+EXIT
+
