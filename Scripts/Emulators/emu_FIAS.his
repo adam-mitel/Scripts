@@ -1,128 +1,25 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to any FIAS client.
 ;
 ;                                                             AU-20100201
 ;
-;  Modifications - AU - 28/06/2017 - 50.0.4.0
+;  Modifications - AU - 2017-06-28 - 50.0.5.0
+;	* Added options to filter events based on Extension Facilities
+;
+;  Modifications - AU - 2017-06-28 - 50.0.4.0
 ;	* Added option s_TransferCheckoutCheckin, default to FALSE
 ;
-;  Modifications - AU - 26/05/2015 - 50.0.3.0
+;  Modifications - AU - 2015-05-26 - 50.0.3.0
 ;	* Added a Passthrough mode for outgoing events using GenericPassthrough
 ;
-;  Modifications - AU - 15/04/2014 - 50.0.2.0
+;  Modifications - AU - 2014-04-15 - 50.0.2.0
 ;	* Added option s_IgnoreZeroBillPosting, default to FALSE
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
-;
-;  Modifications - AU - 18/12/2012
-;	* Modified Room Transfer so we send GN, GT and GF
-;
-;  Modifications - AU - 16/10/2012
-;	* Added support to create Message Waiting commands from RE VM messages
-;
-;  Modifications - AU - 19/01/2012
-;	* Resolved issue where sometimes Checkin and Checkout messages would be ignored
-;	  during the link initiation.
-;	* Added an option s_RespondToLA to set whether we should respond to the Client's
-;	  periodic LinkAlive message
-;	* Added an option s_CheckinOnAddGuest to set whether we should send a Checkin on
-;	  Add Extra Guest regardless if the Client requested the GS field or not.
-;
-;  Modifications - AU - 10/10/2011
-;	* Modified all Sleep commands so they are only actioned if we are interfacing
-;	  via Serial.
-;	* Modified ReceiveRecord to increase the time out from 5 to 10 seconds.
-;
-;  Modifications - AU - 29/03/2011
-;	* Modified HandlePS so that if Combined Services are active we do not create
-;	  any postings where the Total Amount is 0.
-;
-;  Modifications - AU - 11/03/2011
-;	* Added Sleep before certain Return commands to assist with Serial connections.
-;	* Modified Combined Service sections.
-;
-;  Modifications - AU - 14/02/2011
-;	* Modified HandlePS to rearrange Posting Type T to the top.
-;	* Modified PeriodicCheck to send an LS if the link is not currently alive.
-;
-;  Modifications - AU - 28/01/2011
-;	* Modified ReceiveRecord and ReadLinkRecord labels to fix a problem with WaitTimers.
-;	* Modified the reading of BCC characters so we timeout if we don't receive one.
-;	* Modified Extra Guest to change to the specific _EV_ variables.
-;
-;  Modifications - AU - 12/01/2011
-;	* Added Sleep 100 in loop sequences within the script.
-;	* Modified RoomUpdate label to include a check for Update before checkout events.
-;
-;  Modifications - AU - 04/01/2011
-;	* Added support for Combined Services by modifying the following labels:
-;		- INIT
-;		- HandlePS
-;	* Added an option in the INIT to define whether Combined Services are Implemented.
-;
-;  Modifications - AU - 13/12/2010
-;	* Modified HandleXM and HandleXD Labels to include a sixth parameter.
-;	* Modified MessageWaiting label to use the sixth parameter.
-;
-;  Modifications - AU - 29/10/2010
-;	* Added an option in the INIT to set whether we want to use the Sales.
-;	  Outlet number in PS records as the Item Number.
-;	* Modified the f_DoLRC option from TRUE/FALSE to YES/NO.
-;	* Added support for GT, GF, TV, VR, MR and NP messages in GI and GC
-;	  records using additional CFG fields added to HI.
-;	* Removed RUSWAPFLAG from Room Update.
-;	* Removed formatting rules from Bill Response Bill Item values.
-;	* Added Reservation code to CreateBillEnquiry.
-;	* Resolved issue with Room Transfer room numbers being the wrong way around.
-;
-;  Modifications - AU - 24/09/2010
-;	* Added support for Database Swap messages with room numbers EEEE
-;	  and FFFF, these will need to be in the guest directory.
-;
-;  Modifications - AU - 19/08/2010
-;	* Set in_Quantity to 1 when clearing field data rather than blank.
-;	* Set in_ItemID to 9999 by default.
-;	* Modified incoming PS records to use the default ItemID and Quantity.
-;	* Added missing incoming variables in the clear down label.
-;	* Added support for incoming XD and XM messages.
-;	* Added support for outgoing XD, XT and XL messages.
-;	* Added support for incoming Room Status events.
-;	* Removed redundant system settings.
-;	* Added support for multiple Minibar postings in one PS record.
-;
-;  Modifications - AU - 28/07/2010
-;	* Resolved issue with Clear All Wakeups, where we send WR instead of WC.
-;	* Resolved issue where we were sending HHMM instead of HHMMSS
-;	  in Wakeup messages.
-;
-;  Modifications - AU - 21/07/2010
-;	* Resolved issue with processing PA in LinkRecords.
-;	* Added support for trunk number in incoming PS records.
-;	* Changed the way we parse records.
-;	* Changed the way we processed WA messages to highlight any unknown.
-;         statuses.
-;	* Changed whether we wait for an ACK after sending a record depending
-;	  on whether Serial is used rather than LRC characters being used.
-;	* Set in_TotalAmount to 0 when clearing fields rather than blank.
-;	* Modified HandlePS to Parse date, time and duration for telephone calls.
-;	* Resolved support for serial connections so we correctly ACK incoming
-;	  records.
-;	
-;  Modifications - AU - 25/05/2010
-;	* Added CT and P# support for Posting Answers
-;
-;  Modifications - AU - 24/05/2010
-;	* Added support for telephone posting types by sending the details to
-;	  Data Collection in the Enhanced Monarch format.
-;	* Modified Receive Link Record section so they're added to ReceivedRec.
-;	* Modified HandleLA to only send a LinkAlive if the link is not
-;	  currently alive.
-;	* Modified SHUTDOWN to call DoLE to send the Link End message.
-;	* Resolved typographical error in Receive sections with v_FieldID.
 ;
 ; ************************************************************************
 ;                     Copyright © 2013, TigerTMS Ltd.                     
@@ -132,6 +29,7 @@ define SendRec
 define ReceivedRec
 define RecType
 define WorkVal
+define WorkTmp
 ;
 define Date
 define Time
@@ -180,6 +78,8 @@ define s_CheckinOnAddGuest
 define s_IgnoreZeroBillPosting
 define s_PassthroughMode
 define s_TransferCheckoutCheckin
+define s_ExtensionFacilities
+define s_ExtensionFacilityName
 ;
 define s_GI
 define s_GO
@@ -376,6 +276,12 @@ define s_XTMT
 //	OPT: Set this to TRUE if we only want to send GenericPassthrough events
 	Assign s_PassthroughMode "NO"
 
+//	OPT: Set this to TRUE if we should only send events with an Extension Facility
+	Assign s_ExtensionFacilities "FALSE"
+
+//	OPT: If the above is TRUE, enter the Facility name to filter events by
+	Assign s_ExtensionFacilityName "Suite"
+
 	if "$(f_Connection)" EQ "IP"
 		Exit
 
@@ -451,6 +357,9 @@ Goto IgnoreRecord
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(_EV_MWMESSAGETEXT)" EQ ""
 		Goto MW_RE
@@ -688,6 +597,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(_EV_WKACTION)" EQ "SET"
 		Goto WK_Set
 	if "$(_EV_WKACTION)" EQ "CLEAR"
@@ -815,6 +727,9 @@ Goto HandleOKAndExit
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(s_GI)" NE "TRUE"
 		Goto IgnoreRecord
@@ -1105,6 +1020,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(s_GO)" NE "TRUE"
 		Goto IgnoreRecord
 
@@ -1199,6 +1117,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(s_RE)" NE "TRUE"
 		Goto IgnoreRecord
 	if "$(s_RECS)" NE "TRUE"
@@ -1249,6 +1170,9 @@ Goto HandleOKAndExit
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(s_GC)" NE "TRUE"
 		Goto IgnoreRecord
@@ -1549,6 +1473,9 @@ Goto IgnoreRecord
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(s_TransferCheckoutCheckin)" EQ "YES"
 		Goto RoomTransfer_CheckoutCheckin
 
@@ -1803,6 +1730,9 @@ Goto HandleOKAndExit
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(_EV_EGACTION)" EQ "ADD"
 		Goto EG_Checkin
@@ -2101,6 +2031,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(s_RE)" NE "TRUE"
 		Goto IgnoreRecord
 	if "$(s_REDN)" NE "TRUE"
@@ -2199,6 +2132,9 @@ Goto IgnoreRecord
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(_EV_BRTYPE)" EQ "XI"
 		Goto BR_XI
@@ -2359,6 +2295,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
+
 	if "$(s_XC)" NE "TRUE"
 		Goto IgnoreRecord
 	if "$(s_XCAS)" NE "TRUE"
@@ -2421,6 +2360,9 @@ Goto HandleOKAndExit
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "TRUE"
+		Call ExtensionFacilities
 
 	if "$(s_RE)" NE "TRUE"
 		Goto IgnoreRecord
@@ -4122,6 +4064,22 @@ Return
 	Assign s_XTG# "FALSE"
 	Assign s_XTMI "FALSE"
 	Assign s_XTMT "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtensionFacilities
+;   This label is called when we need to check Extension Facilities
+:ExtensionFacilities
+
+	Assign WorkVal "<_EV_EXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_ExtensionFacilityName:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
 Return
 ; ************************************************************************
