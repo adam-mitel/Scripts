@@ -1,11 +1,14 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.21.0
+; Script Version: 50.0.22.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2018-03-28 - 50.0.22.0
+;	* Resolved issue where we still sent XR and XC messages when s_HandleExtendedMessages was off
 ;
 ;  Modifications - AU - 2017-10-24 - 50.0.21.0
 ;	* LinkRecords now request Guest Share even if it is disabled due to Opera
@@ -898,6 +901,9 @@ Goto IgnoreRecord
 if "$(f_LinkAlive)" NE "TRUE"
 	Goto CheckIncoming
 
+if "$(s_HandleExtendedMessages)" NE "TRUE"
+	Goto IgnoreRecord
+
 Assign SendRec "XR|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|G#$(_EV_RESERVATION)|<#3>
 if "$(s_Connection)" NE "IP"
 	GenerateBCCChar "" "$(SendRec)"
@@ -954,6 +960,9 @@ Exit
 // If our link is not up then we're waiting for a Link Alive (LA) message.
 if "$(f_LinkAlive)" NE "TRUE"
 	Goto CheckIncoming
+
+if "$(s_HandleExtendedMessages)" NE "TRUE"
+	Goto IgnoreRecord
 
 // If we need to send a bill enquiry first then comment out the following line
 // NOTE: This should NOT be done in a production environment!
