@@ -1,11 +1,14 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.22.0
+; Script Version: 50.0.23.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2018-03-28 - 50.0.23.0
+;	* If the link start routine fails, we will now send a Link End message
 ;
 ;  Modifications - AU - 2018-03-28 - 50.0.22.0
 ;	* Resolved issue where we still sent XR and XC messages when s_HandleExtendedMessages was off
@@ -368,6 +371,7 @@ if "$(f_LinkAlive)" EQ "TRUE"
 
 Echo If: No response to our LS in 5 seconds, closing and reopening TCP port to try again.
 
+Call DoLinkStop
 ClosePort
 Sleep 5000
 OpenPort
