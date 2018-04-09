@@ -7,8 +7,9 @@
 ;
 ;							      pjh-20041216
 ;
-;  Modifications - AU - 2018-03-28 - 50.0.23.0
+;  Modifications - AU - 2018-04-09 - 50.0.23.0
 ;	* If the link start routine fails, we will now send a Link End message
+;	* We will now ignore BA entries that are out of int32 range to avoid crashes
 ;
 ;  Modifications - AU - 2018-03-28 - 50.0.22.0
 ;	* Resolved issue where we still sent XR and XC messages when s_HandleExtendedMessages was off
@@ -2351,6 +2352,21 @@ Return
 		Return
 
 	Assign f_GotBalance "TRUE"
+
+	if $(in_BillBalance) GT 2147483647
+		Echo Er: BA is out of range - value too high - ignoring record
+	if $(in_BillBalance) GT 2147483647
+		Return
+	if $(in_BillBalance) LT -2147483647
+		Echo Er: BA is out of range - value too low - ignoring record
+	if $(in_BillBalance) LT -2147483647
+		Return
+
+	ContainsSTR "." "$(in_BillBalance)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Er: BA is out of range - received decimal - ignoring record
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
 
 	Call GetDateTime
 	if "$(in_Date)" EQ ""
