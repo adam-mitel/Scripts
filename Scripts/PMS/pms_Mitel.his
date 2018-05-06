@@ -1,5 +1,5 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.4.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for emulating a Mitel Interface.
@@ -8,18 +8,24 @@
 ;
 ;                                                             AU-20120820
 ;
-;  Modifications - AU - 21/03/2017 - 50.0.4.0
+;  Modifications - AU - 2017-03-21 - 50.0.6.0
+;	* Resolved issue reading some incoming records
+;
+;  Modifications - AU - 2017-03-21 - 50.0.5.0
 ;	* Added support for VIP messages
 ;
-;  Modifications - AU - 19/01/2015 - 50.0.3.0
+;  Modifications - AU - 2017-03-08 - 50.0.4.0
+;	* Modified incoming RST messages to pass across the actual RST number
+;
+;  Modifications - AU - 2015-01-19 - 50.0.3.0
 ;	* Added setting to set whether to send extensions left or right justified
 ;	* Added receive logic to cater for both left and right justified extensions
 ;	* Added OpenPort, disabled by default
 ;
-;  Modifications - AU - 24/09/2014 - 50.0.2.0
+;  Modifications - AU - 2014-09-24 - 50.0.2.0
 ;	* Added support for DND
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
 ; ************************************************************************
@@ -112,7 +118,7 @@ Goto IgnoreRecord
 ;   This label is executed by the program when we have a Message Waiting
 ;   event to send.
 :MessageWaiting
-
+//Goto HandleOKAndExit
 	Assign WorkVal "0"
 	if "$(_EV_MWSTATE)" EQ "TRUE"
 		Assign WorkVal "1"
@@ -642,7 +648,7 @@ Return
 		CreateRoomUpdate "$(in_Extension)" "" "" "" "" "" "" "$(in_Status)"
 
 Return
-; ************************************************************************
+; ************************************************************************																		  
 
 
 ; ************************************************************************
@@ -651,14 +657,16 @@ Return
 ;   client.
 :SendRecord
 
-	Send $(SendRec)<#13><#10>
-	Echo Tx: $(SendRec)
+	Send <#5>
+	Echo Tx: <#5>
 
 	StartWaitTimer 10
 
-:SendRecord_WaitForACK
+:SendRecord_WaitForACKToENQ
 
-	ReadFromPort 1 2
+	Sleep 100
+
+	ReadFromPort 1 1
 
 	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
 		Echo Er: Timeout waiting for ACK
@@ -666,7 +674,7 @@ Return
 		Goto SendRecord
 
 	if "$(_PORTCHARS)" EQ ""
-		Goto SendRecord_WaitForACK
+		Goto SendRecord_WaitForACKToENQ
 
 	if "$(_PORTCHARS)" EQ "<#2>"
 		Assign ReceivedRec "<#2>"
@@ -682,16 +690,60 @@ Return
 		Echo Tx: <#6>
 
 	if "$(_PORTCHARS)" EQ "<#6>"
-		Goto SendRecord_GotACK
+		Goto SendRecord_GotACKToENQ
 
 	if "$(_PORTCHARS)" EQ "<#21>"
 		Sleep 2000
 	if "$(_PORTCHARS)" EQ "<#21>"
 		Goto SendRecord
 
-	Goto SendRecord_WaitForAck
+	Goto SendRecord_WaitForACKToENQ
 
-:SendRecord_GotACK
+:SendRecord_GotACKToENQ
+
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 10
+
+:SendRecord_WaitForACKToRec
+
+	Sleep 100
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Echo Er: Timeout waiting for ACK
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForACKToRec
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
+
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Send <#6>
+	if "$(_PORTCHARS)" EQ "<#5>"
+		Echo Tx: <#6>
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotACKToRec
+
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Sleep 2000
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+	Goto SendRecord_WaitForACKToRec
+
+:SendRecord_GotACKToRec
 
 Return
 ; ************************************************************************
