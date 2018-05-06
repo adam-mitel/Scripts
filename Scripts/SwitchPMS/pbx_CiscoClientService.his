@@ -1,5 +1,5 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the script for interfacing to a Cisco Call Manager via our
@@ -7,11 +7,14 @@
 ;
 ;                                                              AU-20131028
 ;
-;  Modifications - AU - 15/06/2015 - 50.0.3.0
+;  Modifications - AU - 2018-05-06 - 50.0.4.0
+;	* Added additional DND method to support different CSS values
+;
+;  Modifications - AU - 2015-06-15 - 50.0.3.0
 ;	* Added directory user updates based on Extension Facilities
 ;	  containing "Directory User"
 ;
-;  Modifications - AU - 27/05/2015 - 50.0.2.0
+;  Modifications - AU - 2015-05-27 - 50.0.2.0
 ;	* Set Checkin and Transfer to clear the Idle URL if we are setting
 ;	  it to stop clearing call history for checked in guests. Requires
 ;	  50.0.10.0 of CiscoClientService
@@ -29,6 +32,8 @@ define BarCSS
 define UnbarCSS
 define LocalCSS
 define NationalCSS
+define DNDBarCSS
+define DNDUnbarCSS
 ;
 define g_GuestName
 define g_UserRoom 
@@ -62,10 +67,13 @@ define s_ServicesURL
 	Assign s_NameLength $(s_TotalNameLength) - 5
 
 //	OPT: Assign the CSS names set in the Cisco CallManager
+//	     Note that not all of these may be used
 	Assign BarCSS "Barred"
 	Assign UnbarCSS "Unbarred"
 	Assign LocalCSS "Local"
 	Assign NationalCSS "National"
+	Assign DNDBarCSS "DNDBarred"
+	Assign DNDUnbarCSS "DNDUnbarred"
 
 //	OPT: Set whether we need to send Local and National CSS values to
 //	     the Cisco CallManager.  This should only be enabled if the
@@ -82,8 +90,11 @@ define s_ServicesURL
 //	OPT: Set whether we want to do a hard reset rather than a soft reset
 	Assign s_DoHardReset "FALSE"
 
-//	OPT: Set whether we want to process Do Not Disturb events
-	Assign s_DoNotDisturb "TRUE"
+//	OPT: Set the DND mode
+//	     "OFF"	-	Not Used
+//           "DND"	-	The DND field is toggled on the Cisco
+//	     "CSS"	-	We will use custom CSS values assigned on the Cisco
+	Assign s_DoNotDisturb "OFF"
 
 //	OPT: Set whether we want to update the Idle URL on Checkin and Checkout
 	Assign s_SetIdleURL "FALSE"
@@ -558,8 +569,14 @@ Goto IgnoreRecord
 ;   event to send.
 :DoNotDisturb
 
-	if "$(s_DoNotDisturb)" NE "TRUE"
-		Goto HandleOKAndExit
+	if "$(s_DoNotDisturb)" EQ "DND"
+		Goto DoNotDisturb_DND
+	if "$(s_DoNotDisturb)" EQ "CSS"
+		Goto DoNotDisturb_CSS
+
+	Goto IgnoreRecord
+
+:DoNotDisturb_DND
 
 	Assign WorkVal "FALSE"
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
@@ -568,6 +585,41 @@ Goto IgnoreRecord
 	Assign SendRec "SOAPSETDND|$(_EV_EXTNNUMBER)|$(WorkVal)|"
 	Call SendRecord
 
+	Echo DND: Completed setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
+
+	Goto HandleOKAndExit
+
+:DoNotDisturb_CSS
+
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Goto DoNotDisturb_CSS_On
+	if "$(_EV_DNDACTION)" NE "DONOTDISTURB"
+		Goto DoNotDisturb_CSS_Off
+
+	Goto IgnoreRecord
+
+:DoNotDisturb_CSS_On
+
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "$(DNDUnbarCSS)"
+	if "$(_EV_ALLOWOUTGOING)" NE "1"
+		Assign WorkVal "$(DNDBarCSS)"
+
+	Goto DoNotDisturb_Send
+
+:DoNotDisturb_CSS_Off
+
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "$(UnbarCSS)"
+	if "$(_EV_ALLOWOUTGOING)" NE "1"
+		Assign WorkVal "$(BarCSS)"
+
+	Goto DoNotDisturb_Send
+
+:DoNotDisturb_Send
+
+	Assign SendRec "COS $(_EV_EXTNNUMBER) $(WorkVal)"
+	Call SendRecord
 	Echo DND: Completed setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
 
 Goto HandleOKAndExit
