@@ -1,11 +1,14 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.1.0
+; Script Version: 50.0.2.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for processing Mitel Wakeup Logs
 ;  received from the Hotel Motel port.
 ;
 ;                                                              AU-20170510
+;
+;  Modifications - AU - 2018-05-06 - 50.0.2.0
+;	* Removed use of date with non-realtime messages (Set/Clear)
 ;
 ; ************************************************************************
 ;                     Copyright © 2013, TigerTMS Ltd.                     
@@ -519,7 +522,7 @@ Return
 
 :HandleRecord_WakeupSet
 
-	CreateSetWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" "<in_Date:DATE:8:YYYYMMDD>"
+	CreateSetWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" ""
 
 Return
 
@@ -530,7 +533,7 @@ Return
 :HandleRecord_WakeupChanged
 
 	CreateClearAllWakeup "$(in_Extension)" ""
-	CreateSetWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" "<in_Date:DATE:8:YYYYMMDD>"
+	CreateSetWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" ""
 
 Return
 
@@ -539,7 +542,7 @@ Return
 	if "$(in_Time)" EQ ""
 		CreateClearAllWakeup "$(in_Extension)" ""
 	if "$(in_Time)" NE ""
-		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" "$(in_Date)"
+		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" ""
 
 Return
 
@@ -572,7 +575,7 @@ Return
 	if "$(in_Time)" EQ ""
 		CreateClearAllWakeup "$(in_Extension)" ""
 	if "$(in_Time)" NE ""
-		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" "$(in_Date)"
+		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" ""
 
 Return
 
