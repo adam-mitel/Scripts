@@ -1,11 +1,15 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.23.0
+; Script Version: 50.0.24.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2018-05-20 - 50.0.24.0
+;	* Modified BillBalance and BillItem to strip decimals and commas to prevent crashes
+;	* Added ID field into Link Records for RE records required for sending Maid ID's
 ;
 ;  Modifications - AU - 2018-04-09 - 50.0.23.0
 ;	* If the link start routine fails, we will now send a Link End message
@@ -2315,6 +2319,11 @@ Return
 	if "$(in_BillDisplay)" NE "Y"
 		Return
 
+	ReplaceStr "$(in_BillItemAmount)" "." "" "TRUE" "FALSE"
+	Assign in_BillItemAmount "$(_G_RESULT)"
+	ReplaceStr "$(in_BillItemAmount)" "," "" "TRUE" "FALSE"
+	Assign in_BillItemAmount "$(_G_RESULT)"
+
 	Call GetDateTime
 	if "$(in_Date)" EQ ""
 		Assign in_Date "$(Date)"
@@ -2362,11 +2371,10 @@ Return
 	if $(in_BillBalance) LT -2147483647
 		Return
 
-	ContainsSTR "." "$(in_BillBalance)" "FALSE"
-	if "$(_G_RESULT)" EQ "TRUE"
-		Echo Er: BA is out of range - received decimal - ignoring record
-	if "$(_G_RESULT)" EQ "TRUE"
-		Return
+	ReplaceStr "$(in_BillBalance)" "." "" "TRUE" "FALSE"
+	Assign in_BillBalance "$(_G_RESULT)"
+	ReplaceStr "$(in_BillBalance)" "," "" "TRUE" "FALSE"
+	Assign in_BillBalance "$(_G_RESULT)"
 
 	Call GetDateTime
 	if "$(in_Date)" EQ ""
@@ -3044,7 +3052,7 @@ Return
 	Call SendRecord
 
 //	Send Link Record (LR) message for Room Equipment Status (RE).
-	Assign SendRec "LR|RIRE|FLRNG#CSCTRS"
+	Assign SendRec "LR|RIRE|FLRNG#CSCTRSID"
 
 	if "$(s_DoNotDisturb)" EQ "TRUE"
 		Assign SendRec "$(SendRec)DN"
