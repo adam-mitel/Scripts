@@ -1,5 +1,5 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Otrum using the
@@ -7,46 +7,49 @@
 ;
 ;    						               AU-20091113
 ;
-;  Modifications - AU - 01/04/2015 - 50.0.4.0
+;  Modifications - AU - 2018-05-20 - 50.0.5.0
+;	* Resolved issue sending Bill Amount totals where there is a credited item
+;
+;  Modifications - AU - 2015-07-19 - 50.0.4.0
 ;	* Added new option s_TVRightsByCOS so that we can calculate TV rights based
 ;	  on COS if the PMS does not send us a TV Rights value
 ;
-;  Modifications - AU - 01/04/2015 - 50.0.3.0
+;  Modifications - AU - 2015-04-01 - 50.0.3.0
 ;	* Modified HandleStat to resolve an issue when waiting for a STAT record
 ;
-;  Modifications - AU - 27/01/2015 - 50.0.2.0
+;  Modifications - AU - 2015-01-27 - 50.0.2.0
 ;	* Modified ReceiveRecord to send an ERR1 if we do not support the VERB
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
-;  Modifications - AU - 02/08/2012
+;  Modifications - AU - 2012-08-02
 ;	* Resolved issue with Handling VER records
 ;
-;  Modifications - AU - 25/06/2012
+;  Modifications - AU - 2012-06-25
 ;	* Added support for Reservation Numbers, where we strip all letters and
 ;	  send the last 6 characters if it's longer than 6
 ;	* Added support for MSGD commands from the TV System
 ;
-;  Modifications - AU - 28/05/2012
+;  Modifications - AU - 2012-05-28
 ;	* Resolved issue with records where tabs were sent instead of spaces
 ;
-;  Modifications - AU - 22/12/2011
+;  Modifications - AU - 2011-12-22
 ;	* Resolved issue with not detecting the VER for our current transaction
 ;	* Resolved issue with not performing any more View Bill or View Messages
 ;	  once we've performed one View Message command
 ;
-;  Modifications - AU - 01/09/2011
+;  Modifications - AU - 2011-09-01
 ;	* General tidy-up
 ;	* Modified HandleDISPRecord to improve how we send BillResponse data
 ;	* Modified HandleMSGRRecord to improve how we send Guest Message data
 ;	* Modified ReceiveRecord to improve how we send BillResponse and
 ;	  Guest Message data
 ;
-;  Modifications - AU - 19/04/2011
+;  Modifications - AU - 2011-04-19
 ;	* Modified HandleMSGRRecord to allow multiple lines to be sent
 ;
-;  Modifications - AU - 11/03/2011
+;  Modifications - AU - 2011-03-11
 ;	* Modified HandleDISPRecord to allow for Bill View to work correctly
 ;	* Modified HandleSTAT to send Bill allowed if it is set to YES in the
 ;	  INIT
@@ -58,15 +61,15 @@
 ;	  available for the guest
 ;	* Completed parts for Combined Services
 ;
-;  Modifications - AU - 21/02/2011
+;  Modifications - AU - 2011-02-21
 ;	* Fixed bug in HandlePOSTRecord to fix a problem where we weren't
 ;	  processing Combined Services correctly
 ;	* Changed Description to in_Description in HandlePOSTRecord
 ;
-;  Modifications - AU - 12/01/2011
+;  Modifications - AU - 2011-01-12
 ;	* Added bits for the future when sending TV Rights commented out
 ;
-;  Modifications - AU - 10/12/2010
+;  Modifications - AU - 2010-12-10
 ;	* Massive overhaul with lots of options added
 ;
 ; ************************************************************************
@@ -99,6 +102,7 @@ define g_GuestDisplayName
 define g_GuestFirstName
 define g_GuestLastName
 define g_GuestTitle
+define g_ItemAmount
 define g_LangCode
 define g_MWStatus
 define g_Name
@@ -114,6 +118,7 @@ define s_MessageResponse
 define s_MessageCallerName
 define s_MessageCallerLocation
 define s_MessageCallerNumber
+define s_TVRightsByCOS
 define s_UseIP
 define s_Wakeups
 ;
@@ -172,6 +177,11 @@ define in_WakeupTime
 
 //	OPT: Specify the TVRights value for full TV Access
 	Assign v_Unrestricted "0"
+
+//	OPT: Specify whether we should calculate the TV Rights values using TV or COS
+//	     "NO"  We receive TV rights from the PMS
+//	     "YES" We do not receive TV rights from the PMS and should use COS
+	Assign s_TVRightsByCOS "NO"
 	
 //	OPT: Specify the Caller Name for the MCLR messages, or leave blank for default
 	Assign s_MessageCallerName ""
@@ -1252,17 +1262,17 @@ Return
 :HandleDISPRecord_BillItemCredit
 
 	CopySubStr "$(_QEV_BRITEMAMOUNT)" "2" "10"
-	Assign WorkVal "$(_G_RESULT)"
+	Assign g_ItemAmount "$(_G_RESULT)"
 
 	GetNextAutoIncNumber ResponseTransID
 
-	Assign SendRec "$(in_Transaction)<_G_RESULT:TEXT:4:RJ,ZP>ITEM<_QEV_BRDATE:DATE:4:MMDD><_QEV_BRPMSDEPTCODE:TEXT:12:LJ,SP>CR<WorkVal:TEXT:7:RJ,SP><#3>"
+	Assign SendRec "$(in_Transaction)<_G_RESULT:TEXT:4:RJ,ZP>ITEM<_QEV_BRDATE:DATE:4:MMDD><_QEV_BRPMSDEPTCODE:TEXT:12:LJ,SP>CR<g_ItemAmount:TEXT:7:RJ,SP><#3>"
 	GenerateBCCChar "7bit" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
 
 	Call SendReply
 
-	Assign g_Balance $(g_Balance) - $(_QEV_BRITEMAMOUNT)
+	Assign g_Balance $(g_Balance) - $(g_ItemAmount)
 
 	FlagSpecificEventIdAsProcessed "$(_QEV_ID)"
 
