@@ -255,7 +255,7 @@ Goto HandleOKAndExit
 
 	; If the wakeup date is in the past, echo and ignore
 	if $(WorkVal) LT $(WorkTmp)
-		Echo Db: Ignoring Set Wakeup Call Event $(_EV_ID) - the wakeup date <_EV_WKDATE:DATE:10:YYYY-MM-DD> is in the past
+		Echo Db: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is in the past
 	if $(WorkVal) LT $(WorkTmp)
 		Goto IgnoreRecord
 
@@ -264,7 +264,7 @@ Goto HandleOKAndExit
 
 	; The wakeup date is today, if the time is in the past, echo and ignore
 	if $(WorkVal) LT $(WorkTmp)
-		Echo Db: Ignoring Set Wakeup Call Event $(_EV_ID) - the wakeup time <_EV_WKTIME:TIME:5:HH:MM> is in the past
+		Echo Db: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is in the past
 	if $(WorkVal) LT $(WorkTmp)
 		Goto IgnoreRecord
 
