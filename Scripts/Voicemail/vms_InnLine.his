@@ -1,5 +1,5 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.8.0
+; Script Version: 50.0.9.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -8,30 +8,33 @@
 ;
 ;                                                              AU-20131017
 ;
-;  Modifications - AU - 19/01/2017 - 50.0.8.0
+;  Modifications - AU - 2018-06-14 - 50.0.9.0
+;	* Further enhancements to 50.0.7.0 changes to also Wakeups in the past
+;
+;  Modifications - AU - 2017-01-19 - 50.0.8.0
 ;	* Added support for Wakeup Date available in new versions of InnLine
 ;
-;  Modifications - AU - 05/07/2015 - 50.0.7.0
+;  Modifications - AU - 2015-07-05 - 50.0.7.0
 ;	* Modified Wakeup to skip sending Set Wakeups that are from the past
 ;
-;  Modifications - AU - 11/11/2014 - 50.0.6.0
+;  Modifications - AU - 2015-01-15 - 50.0.6.0
 ;	* Modified SendRecord to speed up the sending of records
 ;
-;  Modifications - AU - 11/11/2014 - 50.0.5.0
+;  Modifications - AU - 2014-11-11 - 50.0.5.0
 ;	* Added support for Guest Group on Checkin and RoomUpdate
 ;	* Removed Extension Based setting, use Extension Facilities instead
 ;
-;  Modifications - AU - 27/04/2014 - 50.0.4.0
+;  Modifications - AU - 2014-04-27 - 50.0.4.0
 ;	* Made changes to HandleWakeInfo so we do not create WakeupAdvice on
 ;	  Delivery or Failure to prevent duplicate entries in reports
 ;	* Made changes to Wakeup to add support for Result Code NONE on replies
 ;	  to WAKESET
 ;
-;  Modifications - AU - 19/12/2013 - 50.0.3.0
+;  Modifications - AU - 2013-12-19 - 50.0.3.0
 ;	* Modified Checkin and Room Update label to send the departure date and
 ;	  how we send the guest name
 ;
-;  Modifications - AU - 04/12/2013 - 50.0.2.0
+;  Modifications - AU - 2013-12-04 - 50.0.2.0
 ;	* Resolved issue where Room Status wasn't processing correctly
 ;
 ; ************************************************************************
@@ -246,10 +249,26 @@ Goto HandleOKAndExit
 	Assign WorkVal "<_EV_WKDATE:DATE:8:YYYYMMDD>"
 	Assign WorkTmp "<_G_NOW:DATE:8:YYYYMMDD>"
 
+	; If the wakeup date is in the future we are safe to send
+	if $(WorkVal) GT $(WorkTmp)
+		Goto WKSET_Send
+
+	; If the wakeup date is in the past, echo and ignore
 	if $(WorkVal) LT $(WorkTmp)
-		Echo Db: Ignoring Set Wakeup Call Event $(_EV_ID) - the wakeup date is in the past
+		Echo Db: Ignoring Set Wakeup Call Event $(_EV_ID) - the wakeup date <_EV_WKDATE:DATE:10:YYYY-MM-DD> is in the past
 	if $(WorkVal) LT $(WorkTmp)
 		Goto IgnoreRecord
+
+	Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM>"
+	Assign WorkTmp "<_G_NOW:TIME:4:HHMM>"
+
+	; The wakeup date is today, if the time is in the past, echo and ignore
+	if $(WorkVal) LT $(WorkTmp)
+		Echo Db: Ignoring Set Wakeup Call Event $(_EV_ID) - the wakeup time <_EV_WKTIME:TIME:5:HH:MM> is in the past
+	if $(WorkVal) LT $(WorkTmp)
+		Goto IgnoreRecord
+
+:WKSET_Send
 
 	Assign SendRec "WAKESET|RN=<_EV_EXTNNUMBER:TEXT:7:LJ>|WT=<_EV_WKTIME:TIME:4:HHMM>|WS=<_EV_WKDATE:DATE:8:YYYYMMDD>|<#3>"
 	Assign f_WakeupType "SET"
