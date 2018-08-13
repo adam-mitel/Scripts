@@ -8,7 +8,7 @@
 ;
 ;                                                              AU-20131017
 ;
-;  Modifications - AU - 2018-08-08 - 50.0.11.0
+;  Modifications - AU - 2018-08-13 - 50.0.11.0
 ;	* Modifications to HandleWakeInfo so we do not process successful replies
 ;	  to Wakeup Clear messages which left entries in the reports
 ;
