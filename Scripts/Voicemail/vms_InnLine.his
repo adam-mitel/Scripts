@@ -1,5 +1,5 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.10.0
+; Script Version: 50.0.11.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -7,6 +7,10 @@
 ;  InnLine 2020: 3.3.4
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2018-08-08 - 50.0.11.0
+;	* Modifications to HandleWakeInfo so we do not process successful replies
+;	  to Wakeup Clear messages which left entries in the reports
 ;
 ;  Modifications - AU - 2018-08-02 - 50.0.10.0
 ;	* Added option for minutes before wakeup is due to allow wakeup to be set
@@ -1244,6 +1248,9 @@ Goto HandleWakeInfo_TestReply
 Goto HandleWakeInfo_TestReply
 
 :HandleWakeInfo_NONE
+
+	if "$(in_ReplyFlag)" EQ "TRUE"
+		Goto HandleWakeInfo_TestReply
 
 	if $(in_ActionStatus) EQ "NONE"
 		Assign in_ActionResponseTT "10"
