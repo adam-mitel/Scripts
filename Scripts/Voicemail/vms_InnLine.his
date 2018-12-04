@@ -8,7 +8,7 @@
 ;
 ;                                                              AU-20131017
 ;
-;  Modifications - AU - 2018-08-13 - 50.0.12.0
+;  Modifications - AU - 2018-12-04 - 50.0.12.0
 ;	* Wakeup messages will now be ignored if the response is FAILED
 ;
 ;  Modifications - AU - 2018-08-13 - 50.0.11.0
