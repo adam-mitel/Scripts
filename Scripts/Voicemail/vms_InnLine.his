@@ -1,5 +1,5 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.11.0
+; Script Version: 50.0.12.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -7,6 +7,9 @@
 ;  InnLine 2020: 3.3.4
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2018-08-13 - 50.0.12.0
+;	* Wakeup messages will now be ignored if the response is FAILED
 ;
 ;  Modifications - AU - 2018-08-13 - 50.0.11.0
 ;	* Modifications to HandleWakeInfo so we do not process successful replies
@@ -269,7 +272,7 @@ Goto HandleOKAndExit
 
 	; If the wakeup date is in the past, echo and ignore
 	if $(WorkVal) LT $(WorkTmp)
-		Echo Db: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is in the past
+		Echo Er: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is in the past
 	if $(WorkVal) LT $(WorkTmp)
 		Goto IgnoreRecord
 
@@ -291,13 +294,11 @@ Goto HandleOKAndExit
 	; Set WorkVal to the Wakeup Time
 	Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM>"
 
-	Echo Db: DEBUG - Checking Wakeup Time [$(WorkVal)] against $(s_WakeupMinuteThreshold) mins ago [$(WorkTmp)]
-
 	; The wakeup date is today, if the time is further than s_WakeupMinuteThreshold the past, create a failed event, echo and ignore
 	if $(WorkVal) LT $(WorkTmp)
 		CreateWakeupFailed "$(_EV_EXTNNUMBER)" "" "<_EV_WKDATE:DATE:8:YYYYMMDD>" "<_EV_WKTIME:TIME:4:HHMM>" "12"
 	if $(WorkVal) LT $(WorkTmp)
-		Echo Db: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is too far in the past
+		Echo Er: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is too far in the past
 	if $(WorkVal) LT $(WorkTmp)
 		Goto IgnoreRecord
 
@@ -358,13 +359,13 @@ Goto HandleOKAndExit
 
 :WKTIMEOUT
 
-	Echo Db: Timeout waiting for WAKEINFO for $(_EV_EXTNNUMBER)
+	Echo Er: Timeout waiting for WAKEINFO for $(_EV_EXTNNUMBER)
 	Sleep 2000
 
 	if "$(f_WakeupType)" EQ "CLEARALL"
 		Goto WKCLEARALL
 	if "$(f_WakeupType)" EQ "SET"
-		Echo Db: Clearing Wakeup on $(_EV_EXTNNUMBER) before resetting
+		Echo If: Clearing Wakeup on $(_EV_EXTNNUMBER) before resetting
 
 	Goto WKCLEAR
 
@@ -410,25 +411,11 @@ Goto HandleOKAndExit
 
 :WKFAIL
 
-	Echo Db: Failed to set Wakeup on $(_EV_EXTNNUMBER) because it's vacant - Checking in
+	Echo Er: Failed to set Wakeup on $(_EV_EXTNNUMBER) for <_EV_WKDATE:DATE:8:YYYYMMDD> <_EV_WKTIME:TIME:4:HHMM>
 
-	Assign g_ID "DEFAULT"
-	if "$(_EV_RESERVATION)" NE ""
-		Assign g_ID "$(_EV_RESERVATION)"
-
-	Assign SendRec "GUESTIN|RN=<_EV_EXTNNUMBER:TEXT:7:LJ>|GI=$(g_ID)|LN=$(_EV_GUESTNAME)|LA=DEF|<#3>"
-	if "$(s_UseIP)" NE "TRUE"
-		GenerateBCCChar "" "$(SendRec)"
-	if "$(s_UseIP)" NE "TRUE"
-		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
-	if "$(s_UseIP)" EQ "TRUE"
-		Assign SendRec "<#2>$(SendRec)<#0>"
-
-	Call SendRecord
-
-	Sleep 3000
-
-	Exit
+	; Create a failed event to reflect in reports and clear the wakeup down
+	CreateWakeupFailed "$(_EV_EXTNNUMBER)" "" "<_EV_WKDATE:DATE:8:YYYYMMDD>" "<_EV_WKTIME:TIME:4:HHMM>" "12"
+	Goto IgnoreRecord
 
 :WKUNKNOWN
 
@@ -1269,7 +1256,7 @@ Goto HandleWakeInfo_TestReply
 	if "$(in_Room)" EQ "$(f_WakeupRoom)"
 		Assign f_GotWakeupResponse "TRUE"
 	if "$(in_Room)" NE "$(f_WakeupRoom)"
-		Echo Db: Got WakeInfo reply but not for the correct room
+		Echo Er: Got WakeInfo reply but not for the correct room
 
 Return
 ; ************************************************************************
