@@ -1,5 +1,5 @@
 ; Coded For: 50.0.12.0
-; Script Version: 50.0.12.0
+; Script Version: 50.0.13.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -7,6 +7,11 @@
 ;  InnLine 2020: 3.3.4
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2018-12-05 - 50.0.13.0
+;	* We now cater for AS in WAKEINFO FAILED messages for WAKESET
+;	* Removed past time check for old Wakeups as InnLine will now tell us
+;	  that the wakeup failed to set because it's old
 ;
 ;  Modifications - AU - 2018-12-04 - 50.0.12.0
 ;	* Wakeup messages will now be ignored if the response is FAILED
@@ -68,7 +73,6 @@ define s_MessageWaiting
 define s_Passcode
 define s_UseIP
 define s_Wakeups
-define s_WakeupMinuteThreshold
 ;
 define f_GotWakeupResponse
 define f_ReceivedWhileSending
@@ -120,9 +124,6 @@ define in_WakeupTime
 
 	// OPT: Set whether this interface is to deliver Wakeup events
 	Assign s_Wakeups "YES"
-
-	// OPT: Set how long in the past the script should send wakeups for
-	Assign s_WakeupMinuteThreshold "0"
 
 	// OPT: Set whether we want to set the passcode to the Room Number
 	Assign s_Passcode "NO"
@@ -263,47 +264,6 @@ Goto HandleOKAndExit
 
 :WKSET
 
-	Assign WorkVal "<_EV_WKDATE:DATE:8:YYYYMMDD>"
-	Assign WorkTmp "<_G_NOW:DATE:8:YYYYMMDD>"
-
-	; If the wakeup date is in the future we are safe to send
-	if $(WorkVal) GT $(WorkTmp)
-		Goto WKSET_Send
-
-	; If the wakeup date is in the past, echo and ignore
-	if $(WorkVal) LT $(WorkTmp)
-		Echo Er: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is in the past
-	if $(WorkVal) LT $(WorkTmp)
-		Goto IgnoreRecord
-
-	; Calculate the current time minus the threshold and set WorkTmp - if the current minutes is less than the Treshold then minus 40 to get it from at least 99 to 59
-	Assign WorkTmp "<_G_NOW:TIME:4:HHMM>"
-	Assign WorkTmp $(WorkTmp) - $(s_WakeupMinuteThreshold)
-
-	; if s_WakeupMinuteThreshold is not 0, we might need to subtract a further 40 from at least 99 to 59
-	if "$(s_WakeupMinuteThreshold)" EQ "0"
-		Goto WKSET_SkipSubtraction
-
-	; s_WakeupMinuteThreshold is not 0 so do the subtraction
-	Assign WorkVal "<_G_NOW:TIME:2:MM>"
-	if $(WorkVal) LT $(s_WakeupMinuteThreshold)
-		Assign WorkTmp $(WorkTmp) - 40
-
-:WKSET_SkipSubtraction
-
-	; Set WorkVal to the Wakeup Time
-	Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM>"
-
-	; The wakeup date is today, if the time is further than s_WakeupMinuteThreshold the past, create a failed event, echo and ignore
-	if $(WorkVal) LT $(WorkTmp)
-		CreateWakeupFailed "$(_EV_EXTNNUMBER)" "" "<_EV_WKDATE:DATE:8:YYYYMMDD>" "<_EV_WKTIME:TIME:4:HHMM>" "12"
-	if $(WorkVal) LT $(WorkTmp)
-		Echo Er: Ignoring Set Wakeup ID $(_EV_ID) for $(_EV_EXTNNUMBER) - <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> is too far in the past
-	if $(WorkVal) LT $(WorkTmp)
-		Goto IgnoreRecord
-
-:WKSET_Send
-
 	Assign SendRec "WAKESET|RN=<_EV_EXTNNUMBER:TEXT:7:LJ>|WT=<_EV_WKTIME:TIME:4:HHMM>|WS=<_EV_WKDATE:DATE:8:YYYYMMDD>|<#3>"
 	Assign f_WakeupType "SET"
 	Goto WKSEND
@@ -411,10 +371,27 @@ Goto HandleOKAndExit
 
 :WKFAIL
 
-	Echo Er: Failed to set Wakeup on $(_EV_EXTNNUMBER) for <_EV_WKDATE:DATE:8:YYYYMMDD> <_EV_WKTIME:TIME:4:HHMM>
+	if "$(in_ActionStatus)" EQ ""
+		Goto WKFAIL_NOTGOTREASON
+	if "$(in_ActionStatus)" EQ "FAILED"
+		Goto WKFAIL_NOTGOTREASON
+
+	if "$(in_ActionStatus)" EQ "PASTTIME"
+		Echo Er: Failed to set Wakeup on $(_EV_EXTNNUMBER) for <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM> - The wakeup is in the past
+	if "$(in_ActionStatus)" EQ "PASTTIME"
+		CreateWakeupFailed "$(_EV_EXTNNUMBER)" "" "<_EV_WKDATE:DATE:8:YYYYMMDD>" "<_EV_WKTIME:TIME:4:HHMM>" "12"
+	if "$(in_ActionStatus)" EQ "PASTTIME"
+		Goto IgnoreRecord
+
+	Echo If: Unknown WAKESET failure reason: [$(in_ActionStatus)]
+
+:WKFAIL_NOTGOTREASON
+
+	Echo Er: Failed to set Wakeup on $(_EV_EXTNNUMBER) for <_EV_WKDATE:DATE:10:YYYY-MM-DD> <_EV_WKTIME:TIME:5:HH:MM>
 
 	; Create a failed event to reflect in reports and clear the wakeup down
 	CreateWakeupFailed "$(_EV_EXTNNUMBER)" "" "<_EV_WKDATE:DATE:8:YYYYMMDD>" "<_EV_WKTIME:TIME:4:HHMM>" "12"
+
 	Goto IgnoreRecord
 
 :WKUNKNOWN
