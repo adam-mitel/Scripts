@@ -1,10 +1,14 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.9.0
+; Script Version: 50.0.10.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2018-12-18 - 50.0.10.0
+;	* Added more Wakeup filtering to only process relevant action codes
+;	* Set DND to process by default
 ;
 ;  Modifications - AU - 2018-01-17 - 50.0.9.0
 ;	* Efficiency improvements to do with NAK handling
@@ -36,7 +40,7 @@
 ;	* Updated to utilise V50 specific features
 ;
 ; ************************************************************************
-;                     Copyright Â© 2013, TigerTMS Ltd.                     
+;                     Copyright © 2013, TigerTMS Ltd.                     
 ; ************************************************************************
 ;
 define SendRec
@@ -95,7 +99,7 @@ Assign s_DoWakeups "NO"
 
 ; OPT: The following determines if we send Do Not Disturb messages to the Mitel.
 ;      "YES" Means that we send DND messages, "NO" means we don't.
-Assign s_DoDND "NO"
+Assign s_DoDND "YES"
 
 ; OPT: The following determines if we send VIP messages to the Mitel.
 ;      "YES" Means that we send VIP messages, "NO" means we don't.
@@ -261,8 +265,16 @@ Goto HandleOKAndExit
 	if "$(s_SuiteServices)" EQ "YES"
 		Call SuiteServices
 
-	if "$(_EV_WKACTION)" NE "SET"
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WK_Set
+	if "$(_EV_WKACTION)" EQ "CLEAR"
 		Goto WK_Clear
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WK_Clear
+
+	Goto IgnoreRecord
+
+:WK_Set
   
 	Assign SendRec "<#02>WKP<_EV_WKTIME:TIME:4:HHMM><_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
 	Call SendRecord
