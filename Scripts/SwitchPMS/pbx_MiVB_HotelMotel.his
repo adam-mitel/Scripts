@@ -1,5 +1,5 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for processing Mitel Wakeup Logs
@@ -7,8 +7,12 @@
 ;
 ;                                                              AU-20170510
 ;
-;  Modifications - AU - 2019-01-08 - 50.0.3.0
+;  Modifications - AU - 2019-01-09 - 50.0.4.0
 ;	* Added option to only process Wakeup 1
+;
+;  Modifications - AU - 2018-09-26 - 50.0.3.0
+;	* Added checks to skip parsing non-Wakeup events
+;	* Handle different geographical time formats
 ;
 ;  Modifications - AU - 2018-05-06 - 50.0.2.0
 ;	* Removed use of date with non-realtime messages (Set/Clear)
@@ -35,9 +39,10 @@ define in_Extension
 define in_Month
 define in_MonthText
 define in_Time
-define in_TimeText
-define in_WakeupNumber
+define in_TimeHH
+define in_TimeMM
 define in_Year
+define in_WakeupNumber
 ;
 ; ************************************************************************
 ;  INIT
@@ -345,7 +350,7 @@ Exit
 
 	if "$(_PORTCHARS)" EQ "<#13>"
 		Goto ReceiveRecord_GotRecord
-	if "$(_PORTCHARS)" EQ "<#13>"
+	if "$(_PORTCHARS)" EQ "<#10>"
 		Goto ReceiveRecord_GotRecord
 
 	if "$(_PORTCHARS)" NE ""
@@ -359,12 +364,20 @@ Exit
 
 	Assign _G_IN_RECORDFORMAT ""
 
-//	Calculate if this is line 1 or 2
+//	Check if this is line 1 of a record we need to process
 	ContainsSTR "-Info-" "$(ReceivedRec)" "FALSE"
 	if "$(_G_RESULT)" EQ "TRUE"
-		Call Line1_Format
-	if "$(_G_RESULT)" NE "TRUE"
-		Call Line2_Format
+		Goto Line1_Format
+
+//	Check if this is line 2 of a record we need to process
+	ContainsSTR "WAKE-UP" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto Line2_Format
+
+//	This is not a record we need to process - skip parsing
+	Exit
+
+:ReceiveRecord_Parse
 
 	Assign _G_IN_RECORD "$(ReceivedRec)"
 	ParseInRecord
@@ -419,7 +432,7 @@ Exit
 	AssignAsIs _G_IN_RECORDFORMAT "<in_Year:TEXT:4:LJ,SP>-<in_MonthText:TEXT:3:LJ,SP>-<in_Day:TEXT:2:LJ,SP><in_Dummy:TEXT:69:LJ,SP>"
 	Assign f_Line "1"
 
-Return
+Goto ReceiveRecord_Parse
 
 :Line1_Format_MonthConversion
 
@@ -466,18 +479,20 @@ Return
 
 :Line2_Format
 
-	AssignAsIs _G_IN_RECORDFORMAT "<in_WakeupNumber:TEXT:15:LJ,SP><in_Extension:TEXT:5:LJ,SP><in_TimeText:TEXT:5:LJ,SP>  <in_Description:TEXT:25:LJ,SP> <in_Action:TEXT:7:RJ,SP>"
+	AssignAsIs _G_IN_RECORDFORMAT "<in_WakeupNumber:TEXT:15:LJ,SP><in_Extension:TEXT:5:LJ,SP><in_TimeHH:TEXT:2:RJ,SP>:<in_TimeMM:TEXT:2:RJ,SP>  <in_Description:TEXT:25:LJ,SP> <in_Action:TEXT:7:RJ,SP>"
 	Assign f_Line "2"
+
+Goto ReceiveRecord_Parse
 
 :Line2_Format_TimeConversion
 
-	if "$(in_TimeText)" EQ ""
+	if "$(in_TimeHH)" EQ ""
 		Assign in_Time ""
-	if "$(in_TimeText)" EQ ""
+	if "$(in_TimeHH)" EQ ""
 		Return
 
-	AssignAsIs _G_IN_RECORDFORMAT "<in_Time:TIME:5:HH:MM>"
-	Assign _G_IN_RECORD "<in_TimeText:TEXT:5:LJ,SP>"
+	AssignAsIs _G_IN_RECORDFORMAT "<in_Time:TIME:4:HHMM>"
+	Assign _G_IN_RECORD "<in_TimeHH:TEXT:2:RJ,ZP><in_TimeMM:TEXT:2:RJ,ZP>"
 	ParseInRecord
 
 Return
@@ -565,31 +580,31 @@ Return
 	if "$(in_Time)" EQ ""
 		CreateClearAllWakeup "$(in_Extension)" ""
 	if "$(in_Time)" NE ""
-		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" ""
+		CreateClearWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" ""
 
 Return
 
 :HandleRecord_WakeupAcknowledged
 
-	CreateWakeupDelivered "$(in_Extension)" "" "$(in_Date)" "$(in_Time)" "4"
+	CreateWakeupDelivered "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "4"
 
 Return
 
 :HandleRecord_WakeupNoAnswer
 
-	CreateWakeupAdvice "$(in_Extension)" "" "$(in_WakeupDate)" "$(in_WakeupTime)" "5"
+	CreateWakeupAdvice "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "5"
 
 Return
 
 :HandleRecord_WakeupBusy
 
-	CreateWakeupAdvice "$(in_Extension)" "" "$(in_Date)" "$(in_Time)" "7"
+	CreateWakeupAdvice "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "7"
 
 Return
 
 :HandleRecord_WakeupExpired
 
-	CreateWakeupFailed "$(in_Extension)" "" "$(in_Date)" "$(in_Time)" "5"
+	CreateWakeupFailed "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "5"
 
 Return
 
@@ -598,13 +613,13 @@ Return
 	if "$(in_Time)" EQ ""
 		CreateClearAllWakeup "$(in_Extension)" ""
 	if "$(in_Time)" NE ""
-		CreateClearWakeup "$(in_Extension)" "" "$(in_Time)" ""
+		CreateClearWakeup "$(in_Extension)" "" "<in_Time:TIME:4:HHMM>" ""
 
 Return
 
 :HandleRecord_WakeupSystemError
 
-	CreateWakeupAdvice "$(in_Extension)" "" "$(in_Date)" "$(in_Time)" "11"
+	CreateWakeupAdvice "$(in_Extension)" "" "<in_Date:DATE:8:YYYYMMDD>" "<in_Time:TIME:4:HHMM>" "11"
 
 Return
 ; ************************************************************************
@@ -624,7 +639,8 @@ Return
 	Assign in_Month ""
 	Assign in_MonthText ""
 	Assign in_Time ""
-	Assign in_TimeText ""
+	Assign in_TimeHH ""
+	Assign in_TimeMM ""
 	Assign in_Year ""
 
 Return
