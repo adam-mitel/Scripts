@@ -1,11 +1,14 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the script for interfacing to a Cisco Call Manager via our
-;  TigerTMS Client Service.
+;  CiscoCMClientService, minimum version 50.2.5.0.
 ;
 ;                                                              AU-20131028
+;
+;  Modifications - AU - 2019-02-06 - 50.0.5.0
+;	* Modifications to DND to remove CSS and add CFA (Call Forward All)
 ;
 ;  Modifications - AU - 2018-05-06 - 50.0.4.0
 ;	* Added additional DND method to support different CSS values
@@ -32,8 +35,6 @@ define BarCSS
 define UnbarCSS
 define LocalCSS
 define NationalCSS
-define DNDBarCSS
-define DNDUnbarCSS
 ;
 define g_GuestName
 define g_UserRoom 
@@ -48,6 +49,7 @@ define s_UnbarOnCheckin
 define s_ResetOnCheckout
 define s_DoHardReset
 define s_DoNotDisturb
+define s_DNDForwardNumber
 define s_SetIdleURL
 define s_SetServicesURL
 define s_IdleURL
@@ -72,8 +74,6 @@ define s_ServicesURL
 	Assign UnbarCSS "Unbarred"
 	Assign LocalCSS "Local"
 	Assign NationalCSS "National"
-	Assign DNDBarCSS "DNDBarred"
-	Assign DNDUnbarCSS "DNDUnbarred"
 
 //	OPT: Set whether we need to send Local and National CSS values to
 //	     the Cisco CallManager.  This should only be enabled if the
@@ -93,8 +93,9 @@ define s_ServicesURL
 //	OPT: Set the DND mode
 //	     "OFF"	-	Not Used
 //           "DND"	-	The DND field is toggled on the Cisco
-//	     "CSS"	-	We will use custom CSS values assigned on the Cisco
+//	     "CFA"	-	Call Forward All will be triggered - also set the Forward Number
 	Assign s_DoNotDisturb "OFF"
+	Assign s_DNDForwardNumber "0"
 
 //	OPT: Set whether we want to update the Idle URL on Checkin and Checkout
 	Assign s_SetIdleURL "FALSE"
@@ -571,8 +572,8 @@ Goto IgnoreRecord
 
 	if "$(s_DoNotDisturb)" EQ "DND"
 		Goto DoNotDisturb_DND
-	if "$(s_DoNotDisturb)" EQ "CSS"
-		Goto DoNotDisturb_CSS
+	if "$(s_DoNotDisturb)" EQ "CFA"
+		Goto DoNotDisturb_CFA
 
 	Goto IgnoreRecord
 
@@ -589,38 +590,16 @@ Goto IgnoreRecord
 
 	Goto HandleOKAndExit
 
-:DoNotDisturb_CSS
+:DoNotDisturb_CFA
 
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
-		Goto DoNotDisturb_CSS_On
+		Assign WorkVal "$(s_DNDForwardNumber)"
 	if "$(_EV_DNDACTION)" NE "DONOTDISTURB"
-		Goto DoNotDisturb_CSS_Off
+		Assign WorkVal "BLANK"
 
-	Goto IgnoreRecord
-
-:DoNotDisturb_CSS_On
-
-	if "$(_EV_ALLOWOUTGOING)" EQ "1"
-		Assign WorkVal "$(DNDUnbarCSS)"
-	if "$(_EV_ALLOWOUTGOING)" NE "1"
-		Assign WorkVal "$(DNDBarCSS)"
-
-	Goto DoNotDisturb_Send
-
-:DoNotDisturb_CSS_Off
-
-	if "$(_EV_ALLOWOUTGOING)" EQ "1"
-		Assign WorkVal "$(UnbarCSS)"
-	if "$(_EV_ALLOWOUTGOING)" NE "1"
-		Assign WorkVal "$(BarCSS)"
-
-	Goto DoNotDisturb_Send
-
-:DoNotDisturb_Send
-
-	Assign SendRec "COS $(_EV_EXTNNUMBER) $(WorkVal)"
+	Assign SendRec "SOAPSETCALLFORWARD|$(_EV_EXTNNUMBER)|$(WorkVal)|"
 	Call SendRecord
-	Echo DND: Completed setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
+	Echo DND: Completed setting DND Call Forward to $(WorkVal) on $(_EV_EXTNNUMBER).
 
 Goto HandleOKAndExit
 ; ************************************************************************
