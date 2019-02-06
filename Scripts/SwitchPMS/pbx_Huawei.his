@@ -1,10 +1,14 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a Huawei U1900
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2019-01-16 - 50.0.4.0
+;	* Added Room Update label to update the Guest Name
+;	* Added s_SpaceChar option
 ;
 ;  Modifications - AU - 2017-10-04 - 50.0.3.0
 ;	* Made the criteria for detecting being logged out stricter to
@@ -32,6 +36,7 @@ define g_GuestName
 define s_SystemUsername
 define s_SystemPassword
 define s_EnablePassword
+define s_SpaceChar
 define s_Wakeups
 define s_DND
 define s_DNDType
@@ -51,6 +56,9 @@ define v_ReplyString
 
 //	OPT: Set the Enable Username and Password
 	Assign s_EnablePassword "P@ssw0rd"
+
+//	OPT: Set the character we should send to represent a space in the name
+//	Assign s_SpaceChar "_"
 
 //	OPT: Set whether we should instruct the Huawei to deliver Wakeup calls
 	Assign s_Wakeups "FALSE"
@@ -202,7 +210,7 @@ Goto HandleOKAndExit
 		Call Login
 
 	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
-	ReplaceStr "$(g_GuestName)" " " "_" "TRUE" "FALSE"
+	ReplaceStr "$(g_GuestName)" " " "$(s_SpaceChar)" "TRUE" "FALSE"
 	Assign g_GuestName "$(_G_RESULT)"
 
 	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) username <g_GuestName:TEXT:32:>"
@@ -353,7 +361,25 @@ Goto HandleOKAndExit
 ;   event to send.
 :RoomUpdate
 
-Goto IgnoreRecord
+	QueryPortOpen
+	if "$(_G_RESULT)" NE "TRUE"
+		Call Login
+
+	if "$(f_LoggedIn)" NE "TRUE"
+		Call Login
+
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
+	ReplaceStr "$(g_GuestName)" " " "$(s_SpaceChar)" "TRUE" "FALSE"
+	Assign g_GuestName "$(_G_RESULT)"
+
+	Assign SendRec "config modify subscriber dn $(_EV_EXTNNUMBER) username <g_GuestName:TEXT:32:>"
+	Assign v_ReplyString "Command executed success"
+	Call SendRecord
+
+	if "$(f_GotReplyString)" NE "TRUE"
+		Echo Er: Failed to set the name for extension $(_EV_EXTNNUMBER).
+
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
@@ -421,7 +447,7 @@ Goto IgnoreRecord
 		Goto RoomTransfer_Finished
 
 	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:50:AN>"
-	ReplaceStr "$(g_GuestName)" " " "_" "TRUE" "FALSE"
+	ReplaceStr "$(g_GuestName)" " " "$(s_SpaceChar)" "TRUE" "FALSE"
 	Assign g_GuestName "$(_G_RESULT)"
 
 	Assign SendRec "config modify subscriber dn $(_EV_TRDESTEXTNNUMBER) username <g_GuestName:TEXT:32:>"
