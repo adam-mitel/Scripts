@@ -1,10 +1,17 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.10.0
+; Script Version: 50.0.12.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2019-04-29 - 50.0.12.0
+;	* Added Suite Services check to DND events
+;
+;  Modifications - AU - 2019-03-20 - 50.0.11.0
+;	* Modifications to always send an ENQ after a NAK rather than trying
+;	  to retransmit the record
 ;
 ;  Modifications - AU - 2018-12-18 - 50.0.10.0
 ;	* Added more Wakeup filtering to only process relevant action codes
@@ -54,7 +61,6 @@ define NameLen
 ;
 define f_LastChar
 define f_LastSendRec
-define f_SendStatus
 ;
 define s_DoDND
 define s_DoExtraGuest
@@ -589,6 +595,9 @@ Goto HandleOKAndExit
 	if "$(s_DoDND)" NE "YES"
 		Goto IgnoreRecord
 
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices
+
 	Assign WorkVal 0
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
 		Assign WorkVal 1
@@ -923,7 +932,6 @@ Return
 :SendRecord_Start
 
 	Assign f_LastChar ""
-	Assign f_SendStatus "ENQ"
 	Call SENDENQ
 
 	StartWaitTimer 10
@@ -961,8 +969,6 @@ Return
 	Goto WAITFORACKTOENQ
 
 :GOTACKTOENQ
-
-	Assign f_SendStatus "REC"
 
 	Send $(SendRec)
 	Echo Tx: $(SendRec)
@@ -1031,10 +1037,7 @@ Return
 	if "$(f_LastChar)" EQ "<#5>"
 		Exit
 
-	if "$(f_SendStatus)" EQ "ENQ"
-		Goto SendRecord_Start
-	if "$(f_SendStatus)" EQ "REC"
-		Goto GOTACKTOENQ
+	Goto SendRecord_Start
 
 Return
 ; ************************************************************************

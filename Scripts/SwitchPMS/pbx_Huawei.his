@@ -1,10 +1,13 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a Huawei U1900
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2019-04-08 - 50.0.5.0
+;	* Added a match for reply string no need to delete
 ;
 ;  Modifications - AU - 2019-01-16 - 50.0.4.0
 ;	* Added Room Update label to update the Guest Name
@@ -857,6 +860,11 @@ Exit
 
 //	Check if the function is already enabled
 	ContainsStr "NO NEED TO ADD" "<ReceivedRec:TEXT:500:UC>" "TRUE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign f_GotReplyString "TRUE"
+
+//	Check if the function is already deleted
+	ContainsStr "NO NEED TO DEL" "<ReceivedRec:TEXT:500:UC>" "TRUE"
 	if "$(_G_RESULT)" EQ "TRUE"
 		Assign f_GotReplyString "TRUE"
 
