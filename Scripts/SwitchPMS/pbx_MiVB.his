@@ -1,10 +1,14 @@
 ; Coded For: 50.0.0.1
-; Script Version: 50.0.12.0
+; Script Version: 50.0.13.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2019-04-29 - 50.0.13.0
+;	* Modified Room Transfer to check separate Suite Services for
+;	  Source and Destination extensions
 ;
 ;  Modifications - AU - 2019-04-29 - 50.0.12.0
 ;	* Added Suite Services check to DND events
@@ -456,7 +460,7 @@ goto IgnoreRecord
 		Goto CheckIncoming
 
 	if "$(s_SuiteServices)" EQ "YES"
-		Call SuiteServices
+		Call SuiteServices_Source
 
 	if "$(_EV_EXTNNUMBER)" EQ ""
 		Echo RT: Blank Source Extension for Event $(_EV_ID) - Skipping Checkout.
@@ -467,6 +471,9 @@ goto IgnoreRecord
 	Call SendRecord
 
 :RT_SkipCheckout
+
+	if "$(s_SuiteServices)" EQ "YES"
+		Call SuiteServices_Destination
 
 	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
 		Echo RT: Blank Destination Extension for Event $(_EV_ID) - Skipping Checkout.
@@ -1054,6 +1061,28 @@ Return
 	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
 	if "$(_G_RESULT)" NE "TRUE"
 		Goto IgnoreRecord
+
+Return
+
+:SuiteServices_Source
+
+	Assign WorkVal "<_EV_EXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_SuiteServicesFacility:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RT_SkipCheckout
+
+Return
+
+:SuiteServices_Destination
+
+	Assign WorkVal "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_SuiteServicesFacility:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomTransfer_Complete
 
 Return
 ; ************************************************************************
