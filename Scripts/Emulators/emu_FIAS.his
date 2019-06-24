@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to any FIAS client.
 ;
 ;                                                             AU-20100201
+;
+;  Modifications - AU - 2019-06-24 - 50.0.6.0
+;	* Updated Message Waiting filtering based upon WKACTION
 ;
 ;  Modifications - AU - 2017-06-28 - 50.0.5.0
 ;	* Added options to filter events based on Extension Facilities
@@ -361,7 +364,9 @@ Goto IgnoreRecord
 	if "$(s_ExtensionFacilities)" EQ "TRUE"
 		Call ExtensionFacilities
 
-	if "$(_EV_MWMESSAGETEXT)" EQ ""
+	if "$(_EV_MWACTION)" EQ "LAMPON"
+		Goto MW_RE
+	if "$(_EV_MWACTION)" EQ "LAMPOFF"
 		Goto MW_RE
 
 	if "$(_EV_MWCFGFIELD_0)" EQ "XM"
