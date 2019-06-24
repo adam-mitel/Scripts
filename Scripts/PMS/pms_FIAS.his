@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.24.0
+; Script Version: 50.0.25.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2019-06-24 - 50.0.25.0
+;	* Modified HandleXI to allow for no department code from PMS
 ;
 ;  Modifications - AU - 2018-05-20 - 50.0.24.0
 ;	* Modified BillBalance and BillItem to strip decimals and commas to prevent crashes
@@ -2338,6 +2341,8 @@ Return
 	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
 		Goto InvalidDateTime
 
+	if "$(in_BillDeptCode)" EQ ""
+		Assign in_BillDeptCode "1"
 	if $(in_BillDeptCode) GT 999999999
 		Assign in_BillDeptCode "1"
 
