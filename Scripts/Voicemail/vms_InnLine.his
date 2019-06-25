@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.13.0
+; Script Version: 50.0.14.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -7,6 +7,9 @@
 ;  InnLine 2020: 3.3.4
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - BF - 2019-06-25 - 50.0.14.0
+;	* Support for InnLine LICINFO events
 ;
 ;  Modifications - AU - 2018-12-05 - 50.0.13.0
 ;	* We now cater for AS in WAKEINFO FAILED messages for WAKESET
@@ -73,12 +76,14 @@ define s_MessageWaiting
 define s_Passcode
 define s_UseIP
 define s_Wakeups
+define s_License
 ;
 define f_GotWakeupResponse
 define f_ReceivedWhileSending
 define f_WaitingForWakeupReponse
 define f_WakeupRoom
 define f_WakeupType
+define f_TenantID
 ;
 define v_FieldID
 define v_FieldData
@@ -109,6 +114,9 @@ define in_UrgentCount
 define in_WakeupDate
 define in_WakeupID
 define in_WakeupTime
+define in_LicenseID
+define in_PortsLicensed
+define in_PortsUsed
 ;
 ; ************************************************************************
 ;  INIT
@@ -127,6 +135,12 @@ define in_WakeupTime
 
 	// OPT: Set whether we want to set the passcode to the Room Number
 	Assign s_Passcode "NO"
+
+	// OPT: Set whether this interface is to process License Queries
+	Assign s_License "YES"
+
+	// OPT: Set the Tenant ID if required
+	Assign f_TenantID "Tenant 1"
 
 	// OPT: Set here whether we are to use IP or not
 	Assign s_UseIP "TRUE"
@@ -759,6 +773,30 @@ Goto IgnoreRecord
 
 
 ; ************************************************************************
+;  LicenseRequest
+;   This label is executed by the program when we have a License Request
+;   event to send.
+:LicenseRequest
+
+	if "$(s_License)" NE "YES"
+		Goto IgnoreRecord
+
+	//Assign SendRec "?LICINFO|TE=f_TenantId|<#3>"
+	Assign SendRec "?LICINFO|<#3>"
+	if "$(s_UseIP)" NE "TRUE"
+		GenerateBCCChar "" "$(SendRec)"
+	if "$(s_UseIP)" NE "TRUE"
+		Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+	if "$(s_UseIP)" EQ "TRUE"
+		Assign SendRec "<#2>$(SendRec)<#0>"
+
+	Call SendRecord
+
+Goto HandleOKAndExit
+; ************************************************************************
+
+
+; ************************************************************************
 ;  PeriodicCheck
 ;   This label is executed periodically by the program.
 :PeriodicCheck
@@ -938,6 +976,8 @@ Exit
 		Call HandleMiniBar
 	if "$(RecType)" EQ "WAKEINFO"
 		Call HandleWakeInfo
+	if "$(RecType)" EQ "LICINFO"
+		Call HandleLicenseResponse
 
 	; Send an ACK
 	Send <#6>
@@ -1035,6 +1075,15 @@ Exit
 	if "$(v_FieldID)" EQ "WT"
 		Assign in_WakeupTime "$(v_FieldData)"
 
+	if "$(v_FieldID)" EQ "LI"
+		Assign in_LicenseID "$(v_FieldData)"
+
+	if "$(v_FieldID)" EQ "PL"
+		Assign in_PortsLicensed "$(v_FieldData)"
+
+	if "$(v_FieldID)" EQ "PU"
+		Assign in_PortsUsed "$(v_FieldData)"
+
 Return
 ; ************************************************************************
 
@@ -1075,6 +1124,9 @@ Return
 	Assign in_WakeupDate ""
 	Assign in_WakeupID ""
 	Assign in_WakeupTime ""
+	Assign in_LicenseID ""
+	Assign in_PortsLicensed ""  
+	Assign in_PortsUsed ""      
 
 Return
 ; ************************************************************************
@@ -1234,6 +1286,17 @@ Goto HandleWakeInfo_TestReply
 		Assign f_GotWakeupResponse "TRUE"
 	if "$(in_Room)" NE "$(f_WakeupRoom)"
 		Echo Er: Got WakeInfo reply but not for the correct room
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleLicenseResponse
+;    This label is called when creating a License Response record
+:HandleLicenseResponse
+
+	CreateLicenseResponse "$(in_TenantID)" "$(in_LicenseID)" "$(in_PortsLicensed)" "$(in_PortsUsed)"
 
 Return
 ; ************************************************************************
