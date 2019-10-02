@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.6.0
+; Script Version: 50.0.7.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to any FIAS client.
 ;
 ;                                                             AU-20100201
+;
+;  Modifications - AU - 2019-06-24 - 50.0.7.0
+;	* Added Date formatting for GA and GD fields
 ;
 ;  Modifications - AU - 2019-06-24 - 50.0.6.0
 ;	* Updated Message Waiting filtering based upon WKACTION
@@ -813,7 +816,13 @@ Goto HandleOKAndExit
 	if "$(_EV_CIDATEARRIVE)" EQ ""
 		Goto CI_SkipGuestArrive
 
-	Assign SendRec "$(SendRec)GA$(_EV_CIDATEARRIVE)|"
+	Assign WorkVal "$(_EV_CIDATEARRIVE)"
+
+	ContainsStr "-" "$(_EV_CIDATEARRIVE)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleCIDateArriveConvert
+
+	Assign SendRec "$(SendRec)GA$(WorkVal)|"
 
 :CI_SkipGuestArrive
 
@@ -822,7 +831,13 @@ Goto HandleOKAndExit
 	if "$(_EV_CIDATEARRIVE)" EQ ""
 		Goto CI_SkipGuestDepart
 
-	Assign SendRec "$(SendRec)GD$(_EV_CIDATEDEPART)|"
+	Assign WorkVal "$(_EV_CIDATEDEPART)"
+
+	ContainsStr "-" "$(_EV_CIDATEDEPART)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleCIDateArriveConvert
+
+	Assign SendRec "$(SendRec)GD$(WorkVal)|"
 
 :CI_SkipGuestDepart
 
@@ -1256,7 +1271,14 @@ Goto HandleOKAndExit
 	if "$(_EV_RUDATEARRIVE)" EQ ""
 		Goto RU_SkipGuestArrive
 
-	Assign SendRec "$(SendRec)GA$(_EV_RUDATEARRIVE)|"
+	Assign WorkVal "$(_EV_RUDATEARRIVE)"
+
+	ContainsStr "-" "$(_EV_RUDATEARRIVE)" "FALSE"
+	echo arr date has - $(_G_RESULT)
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleRUDateArriveConvert
+
+	Assign SendRec "$(SendRec)GA$(WorkVal)|"
 
 :RU_SkipGuestArrive
 
@@ -1265,7 +1287,13 @@ Goto HandleOKAndExit
 	if "$(_EV_RUDATEARRIVE)" EQ ""
 		Goto RU_SkipGuestDepart
 
-	Assign SendRec "$(SendRec)GD$(_EV_RUDATEDEPART)|"
+	Assign WorkVal "$(_EV_RUDATEDEPART)"
+
+	ContainsStr "-" "$(_EV_RUDATEDEPART)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Call HandleRUDateArriveConvert
+
+	Assign SendRec "$(SendRec)GD$(WorkVal)|"
 
 :RU_SkipGuestDepart
 
@@ -4085,6 +4113,57 @@ Return
 	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
 	if "$(_G_RESULT)" NE "TRUE"
 		Goto IgnoreRecord
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HandleDateConversions
+;   These label is called when we have need to convert date strings
+:HandleCIDateArriveConvert
+
+	AssignAsIs _G_IN_RECORDFORMAT "'<WorkVal:DATE:10:YYYY-MM-DD> <WorkTemp:TEXT:255:>"
+	Assign _G_IN_RECORD "$(_EV_CIDATEARRIVE)"
+
+	ParseInRecord
+
+	Assign WorkVal "<WorkVal:DATE:6:YYMMDD>"
+
+	Return
+
+:HandleCIDateDepartConvert
+
+	AssignAsIs _G_IN_RECORDFORMAT "'<WorkVal:DATE:10:YYYY-MM-DD> <WorkTemp:TEXT:255:>"
+	Assign _G_IN_RECORD "$(_EV_CIDATEDEPART)"
+
+	ParseInRecord
+
+	Assign WorkVal "<WorkVal:DATE:6:YYMMDD>"
+
+	Return
+
+:HandleRUDateArriveConvert
+
+	AssignAsIs _G_IN_RECORDFORMAT "'<WorkVal:DATE:10:YYYY-MM-DD> <WorkTemp:TEXT:255:>"
+	Assign _G_IN_RECORD "$(_EV_RUDATEARRIVE)"
+
+	ParseInRecord
+
+	echo parsed
+
+	Assign WorkVal "<WorkVal:DATE:6:YYMMDD>"
+
+	Return
+
+:HandleRUDateDepartConvert
+
+	AssignAsIs _G_IN_RECORDFORMAT "'<WorkVal:DATE:10:YYYY-MM-DD> <WorkTemp:TEXT:255:>"
+	Assign _G_IN_RECORD "$(_EV_RUDATEDEPART)"
+
+	ParseInRecord
+
+	Assign WorkVal "<WorkVal:DATE:6:YYMMDD>"
 
 Return
 ; ************************************************************************
