@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for processing Mitel Wakeup Logs
 ;  received from the Hotel Motel port.
 ;
 ;                                                              AU-20170510
+;
+;  Modifications - AU - 2019-09-10 - 50.0.5.0
+;	* Changed extension length format
 ;
 ;  Modifications - AU - 2019-01-09 - 50.0.4.0
 ;	* Added option to only process Wakeup 1
@@ -479,7 +482,7 @@ Return
 
 :Line2_Format
 
-	AssignAsIs _G_IN_RECORDFORMAT "<in_WakeupNumber:TEXT:15:LJ,SP><in_Extension:TEXT:5:LJ,SP><in_TimeHH:TEXT:2:RJ,SP>:<in_TimeMM:TEXT:2:RJ,SP>  <in_Description:TEXT:25:LJ,SP> <in_Action:TEXT:7:RJ,SP>"
+	AssignAsIs _G_IN_RECORDFORMAT "<in_WakeupNumber:TEXT:11:LJ,SP> <in_Extension:TEXT:7:RJ,SP> <in_TimeHH:TEXT:2:RJ,SP>:<in_TimeMM:TEXT:2:RJ,SP>  <in_Description:TEXT:25:LJ,SP> <in_Action:TEXT:7:RJ,SP>"
 	Assign f_Line "2"
 
 Goto ReceiveRecord_Parse
