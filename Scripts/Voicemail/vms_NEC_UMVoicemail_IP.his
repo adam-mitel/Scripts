@@ -1,10 +1,16 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.1.0
+; Script Version: 50.0.2.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to the
 ;  NEC UM4730 or UM8000 when the Voicemail system is using the
 ;  PMS_Micros-Opera-FIAS2-(IP).ini configuration file.
+;
+;  Modifications - AU - 2019-10-06 - 50.0.2.0
+;	* Resolved issue with Checkout using Room Number instead of Extension
+;	* Added missing ClassOfService label
+;	* Merged Extension Facility addition from emu_FIAS
+;	* Merged Message Waiting filtering from emu_FIAS
 ;
 ;                                                              AU-20180123
 ;
@@ -16,6 +22,7 @@ define SendRec
 define ReceivedRec
 define RecType
 define WorkVal
+define WorkTmp
 ;
 define Date
 define Time
@@ -63,6 +70,8 @@ define s_RespondToLA
 define s_CheckinOnAddGuest
 define s_IgnoreZeroBillPosting
 define s_PassthroughMode
+define s_ExtensionFacilities
+define s_ExtensionFacilityName
 ;
 define s_GI
 define s_GO
@@ -255,6 +264,12 @@ define s_XTMT
 //	OPT: Set this to TRUE if we only want to send GenericPassthrough events
 	Assign s_PassthroughMode "NO"
 
+//	OPT: Set this to TRUE if we should only send events with an Extension Facility
+	Assign s_ExtensionFacilities "NO"
+
+//	OPT: If the above is TRUE, enter the Facility name to filter events by
+	Assign s_ExtensionFacilityName "Voice"
+
 	if "$(f_Connection)" EQ "IP"
 		Exit
 
@@ -328,6 +343,18 @@ Goto IgnoreRecord
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities
+
+	if "$(_EV_MWACTION)" EQ "LAMPON"
+		Goto MessageWaiting_Process
+	if "$(_EV_MWACTION)" EQ "LAMPOFF"
+		Goto MessageWaiting_Process
+
+	Goto IgnoreRecord
+
+:MessageWaiting_Process
+
 	Assign WorkVal "N"
 	if "$(_EV_MWSTATE)" EQ "TRUE"
 		Assign WorkVal "Y"
@@ -350,6 +377,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities
+
 	if "$(_EV_WKACTION)" EQ "SET"
 		Goto WK_Set
 	if "$(_EV_WKACTION)" EQ "CLEAR"
@@ -357,7 +387,6 @@ Goto HandleOKAndExit
 	if "$(_EV_WKACTION)" EQ "CLEARALL"
 		Goto WK_ClearAll	
 
-	Echo If: Unsupported _EV_WKACTION: "$(_EV_WKACTION)".
 	Goto IgnoreRecord
 
 :WK_Set
@@ -393,6 +422,9 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities
+
 	Assign SendRec "GI|RN$(_EV_EXTNNUMBER)|GSN|GN$(_EV_NAMEDISPLAY)|GL$(_EV_CILANGCODE)|GG$(_EV_CIGUESTGROUP)|"
 
 	if "$(_EV_CISWAPFLAG)" EQ "TRUE"
@@ -416,7 +448,10 @@ Goto HandleOKAndExit
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
 
-	Assign SendRec "GO|RN$(_EV_ROOMNUMBER)|GSN|"
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities
+
+	Assign SendRec "GO|RN$(_EV_EXTNNUMBER)|GSN|"
 
 	if "$(_EV_CISWAPFLAG)" EQ "TRUE"
 		Assign SendRec "$(SendRec)SF|"
@@ -431,6 +466,16 @@ Goto HandleOKAndExit
 
 
 ; ************************************************************************
+;  ClassOfService
+;   This label is executed by the program when we have a Class of Service
+;   event to send.
+:ClassOfService
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
 ;  RoomUpdate
 ;   This label is executed by the program when we have a Room Update
 ;   event to send.
@@ -438,6 +483,9 @@ Goto HandleOKAndExit
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities
 
 	Assign SendRec "GC|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|GG$(_EV_RUGUESTGROUP)|RN$(_EV_EXTNNUMBER)|GSN|<#3>"
 	Call HandleLRC
@@ -466,6 +514,9 @@ Goto IgnoreRecord
 
 	if "$(f_LinkAlive)" NE "TRUE"
 		Goto CheckIncoming
+
+	if "$(s_ExtensionFacilities)" EQ "YES"
+		Call ExtensionFacilities_Dest
 
 	Assign SendRec "GC|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|GG$(_EV_TRGUESTGROUP)|RN$(_EV_TRDESTEXTNNUMBER)|GSN|RO$(_EV_EXTNNUMBER)|GSN|<#3>"
 	Call HandleLRC
@@ -2223,6 +2274,33 @@ Return
 	Assign s_XTG# "FALSE"
 	Assign s_XTMI "FALSE"
 	Assign s_XTMT "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExtensionFacilities
+;   This label is called when we need to check Extension Facilities
+:ExtensionFacilities
+
+	Assign WorkVal "<_EV_EXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_ExtensionFacilityName:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+
+:ExtensionFacilities_Dest
+
+	Assign WorkVal "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>"
+	Assign WorkTmp "<s_ExtensionFacilityName:TEXT:255:UC>"
+
+	ContainsStr "$(WorkTmp)" "$(WorkVal)" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
 Return
 ; ************************************************************************
