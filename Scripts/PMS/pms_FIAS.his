@@ -8,7 +8,7 @@
 ;							      pjh-20041216
 ;
 ;  Modifications - AU - 2019-10-02 - 50.0.26.0
-;	* Modified HandleXI to allow for no department code from PMS
+;	* Modified Database Swap to always checkin the first room with GSY
 ;
 ;  Modifications - AU - 2019-06-24 - 50.0.25.0
 ;	* Modified HandleXI to allow for no department code from PMS

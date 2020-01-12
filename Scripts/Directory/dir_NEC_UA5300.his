@@ -1,11 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.1.0
+; Script Version: 50.0.2.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to the
-;  NEC UA5300 directory console, predominantly used in China.
+;  NEC UA5300 and UAE3000 directory consoles, predominantly used in China.
 ;
 ;                                                              AU-20180128
+;
+;  Modifications - AU - 2019-10-02 - 50.0.2.0
+;	* Added support for Heartbeat message beginning with 1 on the UA3000
+;	* Merged changes from latest SV9500
 ;
 ;  Modifications - AU - 2018-01-28 - 50.0.1.0
 ;	* Forked from NEC SV9500 script 50.0.6.0
@@ -51,7 +55,6 @@ define in_WakeupResult
 define s_LanguageBeforeName
 define s_MessageWaiting
 define s_Minibar
-define s_ReverseMaidStatus
 define s_Wakeups
 ;
 ; ************************************************************************
@@ -74,11 +77,6 @@ define s_Wakeups
 //	OPT: Set to "ON" or "OFF" depending on whether we want to send
 //	     Wakeup commands.
 	Assign s_Wakeups "OFF"
-
-//	OPT: If the Hotel requires more than 4 different types of Room Status
-//	     then this will need to be set to TRUE, and the PBX engineer will
-//	     need to use the MaidID entry as the status.  Else, set to FALSE.
-	Assign s_ReverseMaidStatus "FALSE"
 
 //	OPT: Set this value to the Equipment number configured on the PBX
 //	     for the PMS. This is normally fixed to "0" so should not need
@@ -332,7 +330,7 @@ Goto HandleOKAndExit
 	if "$(_EV_EXTNNUMBER)" EQ ""
 		Echo Er: Blank Source Extension during Room Transfer Event $(_EV_ID); Skipping Checkout.
 	if "$(_EV_EXTNNUMBER)" EQ ""
-		Goto TR_SkipCheckout
+		Goto RoomTransfer_SkipCheckout
 
 //	Checkout the Source Extension
 
@@ -345,13 +343,13 @@ Goto HandleOKAndExit
 
 	Call SendRecord
 
-:TR_SkipCheckout
+:RoomTransfer_SkipCheckout
 
 //	Test the Destination Extension
 	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
 		Echo Er: Blank Source Extension during Room Transfer Event $(_EV_ID); Skipping Checkout.
 	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
-		Goto TR_SkipCheckin
+		Goto RoomTransfer_SkipCheckin
 
 //	Define the Language Display
 	Assign g_DisplayLang "<_EV_LANGCODE:TEXT:2:RJ>"
@@ -380,7 +378,7 @@ Goto HandleOKAndExit
 
 	Call SendRecord
 
-:TR_SkipCheckin
+:RoomTransfer_SkipCheckin
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -617,6 +615,11 @@ Exit
 	if "$(_PORTCHARS)" EQ ""
 		Exit
 
+	if "$(_PORTCHARS)" EQ "1"
+		Assign ReceivedRec "1"
+	if "$(_PORTCHARS)" EQ "1"
+		Goto ReceiveRecord
+
 	if "$(_PORTCHARS)" EQ "2"
 		Assign ReceivedRec "2"
 	if "$(_PORTCHARS)" EQ "2"
@@ -774,6 +777,8 @@ Exit
 		Call DDI_RECORD
 	if "$(in_FeatureCode)" EQ "70"
 		Call STATUS_RECORD
+	if "$(in_FeatureCode)" EQ "F0"
+		Call STATUS_RECORD
 
 	Echo Rx: $(ReceivedRec)
 
@@ -839,17 +844,7 @@ Return
 :MAIDSTATUS_GUESTROOM
 
 	Assign RecType "RS"
-
-	if "$(s_ReverseMaidStatus)" EQ "TRUE"
-		Goto MSG_ReverseMaidStatus
-
 	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,ZP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1117<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_MaidID:TEXT:6:LJ,SP><#3>"
-
-Return
-
-:MSG_ReverseMaidStatus
-
-	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,ZP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1117<in_MaidID:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_Status:TEXT:6:LJ,SP><#3>"
 
 Return
 ; ************************************************************************
@@ -863,16 +858,7 @@ Return
 
 	Assign RecType "RS"
 
-	if "$(s_ReverseMaidStatus)" EQ "TRUE"
-		Goto MSP_ReverseMaidStatus
-
 	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,SP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1217<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_MaidID:TEXT:2:LJ,SP><#3>"
-
-Return
-
-:MSP_ReverseMaidStatus
-
-	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,SP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1217<in_MaidID:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_Status:TEXT:6:LJ,SP><#3>"
 
 Return
 ; ************************************************************************

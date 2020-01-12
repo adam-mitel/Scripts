@@ -129,6 +129,8 @@ Assign s_UseRST "YES"
 
 ; OPT: If using the new RST command then set here the Bar and Unbar class of
 ;      service IDs as required. The defaults are Bar 0 and Unbar 2.
+;      These values are in the Hospitality settings, NOT the actual COR number
+;      These values are only valid between "0" and "5"
 Assign s_RSTBarCOS "0"
 Assign s_RSTUnbarCOS "2"
 
