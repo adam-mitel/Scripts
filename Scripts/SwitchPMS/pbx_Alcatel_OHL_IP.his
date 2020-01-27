@@ -1,1116 +1,1360 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.0.2
+; Script Version: 50.0.3.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an Alcatel
-;  OmniPCX Office PABX.
+;  OmniPCX Office PABX. This script requires Alcatel to install the
+;  OLD (Office Link Driver) on the TigerTMS PC and then we connect to it
 ;
-;                                                               ph-091000
+;                                                              AU-20131017
 ;
-;  Modifications - AU - 28/10/2013
-;	* Merged CG's PinLength changes from V4.10 script to V50 script
+;  Modifications - AU - 2020-01-27 - 50.0.3.0
+;	* Complete rewrite based on the AHL script and OHL API R2.3.12
 ;
-;  Modifications - AU - 17/10/2013
+;  Modifications - AU - 2013-10-28 - 50.0.2.0
+;	* Merged CG's s_PasswordLength changes from V4.10 script to V50 script
+;
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
 ; ************************************************************************
 ;                     Copyright © 2013, TigerTMS Ltd.                     
 ; ************************************************************************
 ;
-define SendRec
-define ReceiveRec
+define ReceivedRec
 define RecType
-
-define ExtnLength
-define DoVoicemail
-define PinLength
-
+define SendRec
 define WorkVal
-define f_sending
-define received_rec_type
-define dummy
-
-define in_Extn
-define in_PW
+;
+define f_GotReply
+define f_Extn
+define f_ReplyExtn
+define f_ReplyType1
+define f_ReplyType2
+define f_Sending
+define f_SendAttempts
+define f_SendLabel
+define f_WaitingForReply
+;
+define s_CloseDOD
+define s_DoDND
+define s_DoWakeups
+define s_LocalDOD
+define s_NationalDOD
+define s_OpenDOD
+define s_PasswordLength
+define s_SuiteMode
+;
+define g_LangCode
+define g_Password
+;
 define in_Action
-define in_Reason
 define in_BCC
+define in_CRString
+define in_Dummy
+define in_Extn
+define in_MWStatus
+define in_PW
+define in_Reason
 define in_RSMaidID
 define in_RSStatus
-define in_MWStatus
-define in_MWCHar
-define in_MBCode
-define in_MBData
-define in_WKCode
 define in_WKActDate
+define in_WKCode
 define in_WKOriginator
 define in_WKTime
-define in_CRString
-define WKEMessage
-
-define temp_extn
-define char_count
-
-define OpenDOD
-define CloseDOD
-define VMMasterOnly
-
-define GuestName
-define AllowCalls
-define LangCode
-
-define CheckinOnRoomUpdate
-define StaticMode
-
-define DODVal
-
+;
 ; ************************************************************************
 ;  INIT
-;   The script is executed from this label when we have a call record to
-;   send.
+;   This label is called at program startup.
 :INIT
 
-Assign received_rec_type ""
-Assign f_sending "FALSE"
+//	OPT: Set the Password Length. This is either 4 or 6 (default)
+	Assign s_PasswordLength "6"
 
-; OPT: Extension length in this protocol can be either 5 or 8.
-; NOTE: There are other areas where this may need changing.  Search text
-;       for "assignasis" and change any references to extension in them.
-Assign ExtnLength 8
+//	OPT: Set whether we should only check in a Suite extension
+	Assign s_SuiteMode "FALSE"
 
-; OPT: Password (PIN) length in this protocol can be either 4 or 6.
-; NOTE: PBX's with 4 digit pins send reply messages as an 'R' record.
-;       PBX's with 6 digit pins send reply messages as an 'S' record.
-;       There are other changes but this will allow you to instantly tell
-;       the PBX configuration when testing.
-Assign PinLength "4"
+//	OPT: Set whether we want to do DND events
+	Assign s_DoDND "TRUE"
 
-; OPT: If the Alcatel has voicemail and can accept voicemail attribution
-;      commands, set this to TRUE.  Otherwise, set it to FALSE.
-Assign DoVoicemail "false"
+//	OPT: Set whether we want to do Wakeup events
+	Assign s_DoWakeups "TRUE"
 
-; OPT: If the Alcatel has voicemail and we are only creating mailboxes
-;      on the Master extension in a room, set this to TRUE.  Otherwise
-;      set it to FALSE.
-Assign VMMasterOnly "FALASE"
-
-; OPT: These 2 items are the class of service settings for opening and
-;      closing the lines in the room.
-; NOTE: 00 = No outgoing calls allowed.
-;       01 = Only Local outgoing authorised.
-;       02 = Only Local and National outgoing calls authorised.
-;       03 = Local, National and International outgoing calls authorised.
-Assign CloseDOD "00"
-Assign OpenDOD "03"
-
-Assign CheckinOnRoomUpdate "FALSE"
-
-Assign StaticMode "FALSE"
+//	OPT: Set the DOD Class of Service values
+//	     NOTE:
+//	     00 - No outgoing calls authorized
+//	     01 - Only local calls authorized
+//	     02 - Only local and national calls authorized
+//	     03 - All outgoing calls authorized
+	Assign s_CloseDOD "00"
+	Assign s_LocalDOD "00"
+	Assign s_NationalDOD "00"
+	Assign s_OpenDOD "03"
 
 Exit
 ; ************************************************************************
 
+
+; ************************************************************************
+;  PORT_OPENED
+;    This label is called when an IP Connection is established.
 :PORT_OPENED
 
-Assign SendRec "<#2>@FFFF<#3>"
+	Assign f_ReplyExtn "0"
+	Assign f_ReplyType1 "0"
+	Assign f_ReplyType2 "0"
 
-; Go on to send it
-Call SendRecord
+	Assign f_Sending "TRUE"
 
-Goto PeriodicCheck
+	Assign SendRec "<#2>@FFFF<#3>"
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	Sleep 1000
+
+	Assign SendRec "<#2><#36>FFFF<#3>"
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	Assign f_Sending "FALSE"
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  SHUTDOWN
+;    This label is called when the program is terminated.
+:SHUTDOWN
+
+Exit
+; ************************************************************************
+
 
 ; ************************************************************************
 ;  CallRecord
-;   The script is executed from this label when we have a call record to
+;   This label is executed by the program when we have a Call Record to
 ;   send.
 :CallRecord
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  RoomStatus
-;   The script is executed from this label when we have a room status
+;   This label is executed by the program when we have a Room Status
 ;   event to send.
 :RoomStatus
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  Minibar
-;   The script is executed from this label when we have a minibar event
+;   This label is executed by the program when we have a Minibar Event
 ;   to send.
 :Minibar
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  MessageWaiting
-;   The script is executed from this label when we have a message waiting
+;   This label is executed by the program when we have a Message Waiting
 ;   event to send.
 :MessageWaiting
 
-; Default to 0 for mw light off
-Assign WorkVal "0"
-
-; set it to 1 if it is an mw light on
-if "$(_EV_MWSTATE)" EQ "TRUE"
-	Assign WorkVal "1"
-	
-; Build the record and its BCC character
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
-
-if "$(PinLength)" EQ "4"
-	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0                   $(WorkVal)      "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0                     $(WorkVal)      "
-
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-; Go on to send it
-Call SendRecord
-
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  WakeupCall
-;   The script is executed from this label when we have a wakeup call
+;   This label is executed by the program when we have a Wakeup Call
 ;   event to send.
 :WakeupCall
 
-; OPT: If you do not want Wakeup Call details to be sent to the exchange, 
-;      uncomment this next line.
-//goto HandleOKAndExit
+	if "$(s_DoWakeups)" NE "TRUE"
+		Goto IgnoreRecord
 
-if "$(_EV_WKACTION)" EQ "CLEARALL"
-  Assign WorkVal "00000"
+	if "$(_EV_WKACTION)" EQ "SET"
+		Goto WakeupCall_Process
+	if "$(_EV_WKACTION)" EQ "CLEAR"
+		Goto WakeupCall_Process
+	if "$(_EV_WKACTION)" EQ "CLEARALL"
+		Goto WakeupCall_Process
 
-if "$(_EV_WKACTION)" EQ "CLEAR"
-  Assign WorkVal "00000"
-   
-if "$(_EV_WKACTION)" EQ "SET"
-  Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM> "
+	Goto IgnoreRecord
 
-; Build the record and its BCC character
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+:WakeupCall_Process
 
-if "$(PinLength)" EQ "4"
-	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0                    $(WorkVal) "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0                      $(WorkVal) "
-	
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	QueryRoomOccupied "$(_EV_EXTNNUMBER)"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
-; Go on to send it
-Call SendRecord
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
 
-goto HandleOKAndExit
+	Assign WorkVal "00000"
+	if "$(_EV_WKACTION)" EQ "SET"
+		Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM> "
+
+	Assign g_Password ""
+
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
+
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  Checkin
-;   The script is executed from this label when we have a checkin event to
-;   send.
+;   This label is executed by the program when we have a Check In event
+;   to send.
 :Checkin
 
-; OPT: If, for some *highly* unlikely reason, you do not want checkin
-;      details to be sent to the exchange, uncomment this next line.
-//goto HandleOKAndExit
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
 
-; Wait until this event is processed by the directory interface
-;WaitUntilProcessedBy "$(_EV_ID)" "DIRECTORY"
+//	Check out the Extension
+	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-Assign LangCode "$(_EV_CILANGCODE)"
-if  "$(_EV_CILANGCODE)" EQ "0"
-	Assign LangCode "1"
-if  "$(_EV_CILANGCODE)" EQ ""
-	Assign LangCode "1"
+	Sleep 1000
 
-; Build the record and send it
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+	Assign g_Password "987654"
 
-if "$(PinLength)" EQ "4"
-    Assign SendRec "A<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_CIGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>    9876$(OpenDOD)                "
-if "$(PinLength)" NE "4"
-    Assign SendRec "B<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_CIGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>    987654$(OpenDOD)                "
+	Assign g_LangCode "$(_EV_LANGCODE)"
+	if  "$(_EV_LANGCODE)" EQ ""
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) LT 1
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) GT 4
+		Assign g_LangCode "1"
 
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-Call SendRecord
+//	Check in the Extension
+	Assign SendRec "B<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "A<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Assign f_ReplyType1 "I"
+	Assign f_ReplyType2 "J"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
 
-Exit
+	Sleep 1000
+
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  Checkout
-;   The script is executed from this label when we have a checkout event
+;   This label is executed by the program when we have a Check Out event
 ;   to send.
 :Checkout
 
-; OPT: If, for some *highly* unlikely reason, you do not want checkout
-;      details to be sent to the exchange, uncomment this next line.
-//goto HandleOKAndExit
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
 
-; build the record and its bcc character.
-Assign SendRec "D<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>"
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-Call SendRecord
+//	Check out the Extension
+	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-Exit
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  ClassOfService
-;   The script is executed from this label when we have a class of service
+;   This label is executed by the program when we have a Class of Service
 ;   event to send.
 :ClassOfService
 
-; OPT: If, for some *highly* unlikely reason, you do not want COS
-;      details to be sent to the exchange, uncomment this next line.
-//goto HandleOKAndExit
+	QueryRoomOccupied "$(_EV_EXTNNUMBER)"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
-; Wait until this event is processed by the directory interface
-; WaitUntilProcessedBy "$(_EV_ID)" "DIRECTORY"
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
 
-if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
-  Assign WorkVal "$(OpenDOD)"
+	Assign g_Password ""
 
-if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
-  Assign WorkVal "$(CloseDOD)"
+	Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_OpenDOD)"
+	if "$(_EV_COSALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_LocalDOD)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_NationalDOD)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_OpenDOD)"
 
-; Build the record and its BCC character
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
+	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-if "$(PinLength)" EQ "4"
-	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0        $(WorkVal)                "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> 0000000000          0          $(WorkVal)                "
-
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-; Go on to send it
-Call SendRecord
-goto HandleOKAndExit
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  RoomUpdate
-;   The script is executed from this label when we have a room update
+;   This label is executed by the program when we have a Room Update
 ;   event to send.
 :RoomUpdate
 
-; OPT: If, for some *highly* unlikely reason, you do not want checkin
-;      details to be sent to the exchange, uncomment this next line.
-//goto HandleOKAndExit
+	QueryRoomOccupied "$(_EV_EXTNNUMBER)"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
 
-if "$(CheckinOnRoomUpdate)" NE "TRUE"
-  goto RoomUpdate_RoomUpdate
+	Assign g_Password ""
 
+	Assign g_LangCode "$(_EV_LANGCODE)"
+	if  "$(_EV_LANGCODE)" EQ ""
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) LT 1
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) GT 4
+		Assign g_LangCode "1"
 
-; Wait until this event is processed by the directory interface
-; WaitUntilProcessedBy "$(_EV_ID)" "DIRECTORY"
+	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                  "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                  "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-Assign LangCode "$(_EV_RULANGCODE)"
-if  "$(LangCode)" EQ "0"
-	Assign LangCode "1"
-if  "$(LangCode)" EQ ""
-	Assign LangCode "1"
-
-; Build the record and send it
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
-
-if "$(PinLength)" EQ "4"
-	Assign SendRec "A<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_RUGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>        $(OpenDOD)                "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "B<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_RUGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>          $(OpenDOD)                "
-
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-Call SendRecord
-
-goto RoomUpdate_Finished
-
-:RoomUpdate_RoomUpdate
-
-Assign WorkVal "$(CloseDOD)"
-if "$(_EV_ALLOWOUTGOING)" EQ "1"
-	Assign WorkVal "$(OpenDOD)"
-
-; Build the record and its BCC character
-Assign temp_extn "<_EV_EXTNNUMBER:TEXT:4:RJ,ZP>"
-
-if "$(PinLength)" EQ "4"
-	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_RUGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>        $(WorkVal)                "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <_EV_RUGUESTNAME:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>          $(WorkVal)                "
-
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-; Go on to send it
-Call SendRecord
-
-:RoomUpdate_Finished
-
-goto HandleOKAndExit
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  BudgetLimit
-;   The script is executed from this label when we have a Budget Limit
+;   This label is executed by the program when we have a Budget Limit
 ;   event to send.
 :BudgetLimit
 
-goto HandleOKAndExit
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  RoomTransfer
-;   The script is executed from this label when we have a Room Transfer
+;   This label is executed by the program when we have a Room Transfer
 ;   event to send.
 :RoomTransfer
 
-; OPT: If you don't want to handle room transfers, uncomment the next line.
-//goto HandleOKAndExit
+	if "$(_EV_EXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckout
 
-; OPT: Change the following line as per ExtnLength (Field width and spaces)
-if "<_EV_EXTNNUMBER:TEXT:8:RJ,SP>" EQ "        "
-  goto RoomTransfer_SkipStaticMode
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode_Source
 
-; OPT: Change the following line as per ExtnLength (Field width and spaces)
-if "<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP>" EQ "        "
-  goto RoomTransfer_SkipStaticMode
+//	Check out the Source Extension
+	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-if "$(StaticMode)" EQ "TRUE"
-  goto RoomTransfer_StaticMode
+:RoomTransfer_SkipCheckout
 
-:RoomTransfer_SkipStaticMode
+	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
+		Goto RoomTransfer_SkipCheckin
 
-; OPT: Change the following line as per ExtnLength (Field width and spaces)
-if "<_EV_EXTNNUMBER:TEXT:8:RJ,SP>" EQ "        "
-  goto RoomTransfer_skipCheckout
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode_Destination
 
-; Query the guest name from the system for the source room
-QueryGuestName "<_EV_EXTNNUMBER:TEXT:$(ExtnLength):>"
-Assign GuestName "$(_G_RESULT)"
+	Assign g_Password "987654"
 
-; Query whether the room can make calls from the system.
-QueryAllowCalls "<_EV_EXTNNUMBER:TEXT:$(ExtnLength):>"
-Assign AllowCalls "$(_G_RESULT)"
+	Assign g_LangCode "$(_EV_LANGCODE)"
+	if  "$(_EV_LANGCODE)" EQ ""
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) LT 1
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) GT 4
+		Assign g_LangCode "1"
 
-; Query the language code for the room.
-QueryLanguageCode "<_EV_EXTNNUMBER:TEXT:$(ExtnLength):>"
-Assign LangCode "$(_G_RESULT)"
+	Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
+		Assign WorkVal "$(s_OpenDOD)"
+	if "$(_EV_TRALLOWOUTGOING)" NE "TRUE"
+		Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "$(s_CloseDOD)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_LocalDOD)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_NationalDOD)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "$(s_OpenDOD)"
 
-if "$(LangCode)" EQ "0"
-  Assign LangCode "1"
-if "$(LangCode)" EQ ""
-  Assign LangCode "1"
+//	Check out the Destination Extension
+	Assign SendRec "D<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP>"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
 
-if "$(AllowCalls)" EQ "TRUE"
-  Assign DODVal "$(OpenDOD)"
-if "$(AllowCalls)" NE "TRUE"
-  Assign DODVal "$(CloseDOD)" 
+//	Check in the Destination Extension
+	Assign SendRec "B<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "A<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Assign f_ReplyType1 "I"
+	Assign f_ReplyType2 "J"
+	Assign f_ReplyExtn "$(_EV_TRDESTEXTNNUMBER)"
+	Call SendRecord
 
-; Check out the source room
-Assign SendRec "D<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>"
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Sleep 1000
 
-; Go on to send it
-Call SendRecord
+:RoomTransfer_SkipCheckin
 
-:RoomTransfer_skipCheckout
-
-; OPT: Change the following line as per ExtnLength (Field width and spaces)
-if "<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP>" EQ "        "
-  goto RoomTransfer_skipCheckin
-
-; Check in the destination room.
-Assign temp_extn "<_EV_TRDESTEXTNNUMBER:TEXT:4:RJ,ZP>"
-
-if "$(PinLength)" EQ "4"
-	Assign SendRec "A<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <GuestName:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>        $(OpenDOD)                "
-if "$(PinLength)" EQ "6"
-	Assign SendRec "B<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP> <GuestName:TEXT:10:UC,AN,LJ,SP>          <LangCode:NUMBER:1:ZP>          $(OpenDOD)                "
-
-GenerateBCCChar "HEXString" "$(SendRec)"
-Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-; Go on to send it
-Call SendRecord
-
-:RoomTransfer_skipCheckin
-:RoomTransfer_Finished
-
-goto HandleOKAndExit
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  ExtraGuest
-;   The script is executed from this label when we have a Extra Guest
+;   This label is executed by the program when we have an Extra Guest
 ;   event to send.
 :ExtraGuest
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  DoNotDisturb
-;   The script is executed from this label when we have a Do Not Disturb
+;   This label is executed by the program when we have a do not disturb
 ;   event to send.
 :DoNotDisturb
 
-goto HandleOKAndExit
+	if "$(s_DoDND)" NE "TRUE"
+		Goto IgnoreRecord
+
+	QueryRoomOccupied "$(_EV_EXTNNUMBER)"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+	if "$(s_SuiteMode)" EQ "TRUE"
+		Call HandleSuiteMode
+
+	Assign g_Password ""
+
+	Assign WorkVal "0"
+	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
+		Assign WorkVal "2"
+
+	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                 $(WorkVal)"
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                 $(WorkVal)"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
+
+Goto HandleOKAndExit
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  PIN
-;   The script is executed from this label when we have a PIN event to
-;   send.
+;   This label is executed by the program when we have a pin event to send.
 :PIN
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
 
 ; ************************************************************************
 ;  DDI
-;   The script is executed from this label when we have a DDI event to
-;   send.
+;   This label is executed by the program when we have a DDI event to send.
 :DDI
 
-goto HandleOKAndExit
+Goto IgnoreRecord
 ; ************************************************************************
 
+
+; ************************************************************************
+;  GuestInfo
+;   This label is executed by the program when we have a Guest Information
+;   event to send.
+:GuestInfo
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillEnquiry
+;   This label is executed by the program when we have a Bill Enquiry
+;   event to send.
+:BillEnquiry
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckout
+;   This label is executed by the program when we have an Express Checkout
+;   event to send.
+:ExpressCheckout
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  BillResponse
+;   This label is executed by the program when we have a Bill Response
+;   event to send.
+:BillResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExpressCheckoutResponse
+;   This label is executed by the program when we have an Express Checkout
+;   Response event to send.
+:ExpressCheckoutResponse
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  TVRights
+;   This label is executed by the program when we have a Television Rights
+;   event to send.
+:TVRights
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  CallPackage
+;   This label is executed by the program when we have a Call Package
+;   event to send.
+:CallPackage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  ExternalMessage
+;   This label is executed by the program when we have an External
+;   Message event to send.
+:ExternalMessage
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  GenericPassthrough
+;   This label is executed by the program when we have a Generic
+;   Passthrough event to send.
+:GenericPassthrough
+
+Goto IgnoreRecord
+; ************************************************************************
+
+
+; ************************************************************************
+;  PeriodicCheck
+;   This label is executed periodically by the program.
 :PeriodicCheck
 
-Assign SendRec "<#2><#36>FFFF<#3>"
+	Assign SendRec "<#2><#36>FFFF<#3>"
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
 
-; Send the record and dislpay it
-Send $(SendRec)
-Echo Tx: $(SendRec)
+	if "$(f_Sending)" EQ "TRUE"
+		Return
 
 Exit
-
 ; ************************************************************************
-;  ReceiveRecord
-; ************************************************************************
-:ReceiveRecord
 
-; Read the next character, it is the record type.
-ReadFromPort 1
-
-; if it is not blank, add it to the record
-if "$(_PORTCHARS)" NE ""
-  Assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
-
-; If it is blank, go back to read.
-if "$(_PORTCHARS)" EQ ""
-  goto ReceiveRecord
-
-; Store the record type
-Assign received_rec_type "$(_PORTCHARS)"
-
-; Test the record type and call the setup handlers
-Assign RecType ""
-if "$(received_rec_type)" EQ "R"
-  call RRECORD
-if "$(received_rec_type)" EQ "S"
-  call RRECORD  
-if "$(received_rec_type)" EQ "C"
-  call RSRECORD
-if "$(received_rec_type)" EQ "F"
-  call MWRECORD
-if "$(received_rec_type)" EQ "P"
-  call MBRECORD
-if "$(received_rec_type)" EQ "J"
-  call CRRECORD
-
-Assign char_count 0
-
-:ContinueReceiving
-
-ReadFromPort 1
-
-if "$(_PORTCHARS)" NE ""
-  Assign char_count $(char_count) + 1
-  
-if "$(_PORTCHARS)" NE ""
-  Assign ReceiveRec "$(ReceiveRec)" "$(_PORTCHARS)"
-
-if "$(Char_Count)" EQ "9"
-  Call ConfirmMBType
-
-if "$(Char_Count)" EQ "12"
-  Call ConfirmWKEType
-
-if "$(_PORTCHARS)" EQ "<#3>"
-  goto STOPRECEIVING
-
-goto ContinueReceiving
-
-;*****************
-;  ConfirmMBType
-;   MB is changed to WKE if this is a wakeup record
-:ConfirmMBType
-
-if "$(RecType)" NE "MB"
-  goto FinishConfirmMBType
-  
-if "$(_PORTCHARS)" EQ "W"
-  Assign RecType "WKE"
-
-:FinishConfirmMBType
-
-Echo Dbg: ConfirmMBType - RecType: "$(RecType)" PortChars: "$(_PortChars)"
-
-Return
-
-;*****************
-;  ConfirmWKEType
-;   WKE is cleared if this is a wakeup event record we will not be handling.
-:ConfirmWKEType
-
-if "$(RecType)" NE "WKE"
-  goto FinishConfirmWKEType
-
-Assign WKEMessage ""
-Assign RecType ""
-if "$(_PORTCHARS)" EQ "N"
-  Assign WKEMessage "Wakeup Call Not Answered"
-if "$(_PORTCHARS)" EQ "N"
-  Assign RecType "WKE"
-if "$(_PORTCHARS)" EQ "O"
-  Assign WKEMessage "Line out of order"
-if "$(_PORTCHARS)" EQ "O"
-  Assign RecType "WKE"
-
-if "$(RecType)" EQ "WKE"
-  call WKERECORD
-   
-:FinishConfirmWKEType
-
-Echo Dbg: ConfirmWKEType - RecType: "$(RecType)" PortChars: "$(_PortChars)"
-   
-Return
-
-:STOPRECEIVING
-
-Echo Rx: $(ReceiveRec)
-
-; If this is a Keep Alive then we don't send an ACK back.
-if "$(received_rec_type)" EQ "$"
-  goto SkipProcessIncoming
-
-Send <#6>
-Echo Tx: <#6>
-
-if "$(RecType)" EQ ""
-  goto SkipProcessIncoming
-
-; Extract the fields from the record
-Assign _G_IN_RECORD "$(ReceiveRec)"
-ParseInRecord
-if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
-  Echo Error with Received Record - Record ignored
-if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
-	goto SkipProcessIncoming
-
-if "$(RecType)" EQ "REP"
-   call HandleReplyRecord
-if "$(RecType)" EQ "RS"
-	call CreateRSEvent
-if "$(RecType)" EQ "MW"
-	call CreateMWEvent
-if "$(RecType)" EQ "MB"
-	call CreateMBEvent
-if "$(RecType)" EQ "WKE"
-	call HandleWakeupEvent
-if "$(RecType)" EQ "CR"
-	call HandleCRString
-
-:SkipProcessIncoming
-
-; If we are receiving part way through sending a record, we need to setup
-; the wait timer again and return.
-if "$(f_sending)" EQ "TRUE"
-  StartWaitTimer 10
-if "$(f_sending)" EQ "TRUE"
-  Return
-
-; If we are not part way through sending we need to exit the script.
-Exit
-
-; ************************************************************************
-;  SendRecord
-;    We arrive at this point when we have a record to send and we have
-;    built it ready to send.
-; ************************************************************************
-:SendRecord
-
-; Set a sending flag for use later
-Assign f_sending "TRUE"
-
-; Send the record and dislpay it
-Send $(SendRec)
-Echo Tx: $(SendRec)
-
-; Start the await ACK timer
-StartWaitTimer 25
-
-:AWAITACKTOREC
-
-ReadFromPort 1 1
-
-; Timer has expired so we're obviously not being sent anything.  Quit
-if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
-  Goto SendError
-
-; If we haven't had a response go back and wait
-if "$(_PORTCHARS)" EQ ""
-  Goto AWAITACKTOREC
-
-; If we get an ACK flag as handled and exit.
-if "$(_PORTCHARS)" EQ "<#6>"
-  Echo Rx: <#6>
-if "$(_PORTCHARS)" EQ "<#6>"
-  CALL HANDLEOK
-if "$(_PORTCHARS)" EQ "<#6>"
-  Return
-
-if "$(_PORTCHARS)" EQ "<#21>"
-  Echo Rx: <#21>
-if "$(_PORTCHARS)" EQ "<#21>"
-  Goto SendError
-
-; If we get an STX, we need to receive an incoming record
-if "$(_PORTCHARS)" EQ "<#2>"
-  Assign ReceiveRec "<#2>"
-if "$(_PORTCHARS)" EQ "<#2>"
-  call ReceiveRecord
-
-;if "$(_PORTCHARS)" NE ""
-;  Echo Rx?: $(_PORTCHARS)
-
-Goto AWAITACKTOREC
-
-
-
-// If we receive an error whilst sending, close and re-establish connection.
-// And then send the connection message. Then try resending the message.
-:SendError
-ClosePort
-OpenPort
-
-; Store old send rec.
-Assign Workval "$(SendRec)"
-Assign SendRec "<#2>@FFFF<#3>"
-Call SendRecord
-
-; Restore old SendRec
-Assign SendRec "$(WorkVal)"
-
-Goto SendRecord
 
 ; ************************************************************************
 ;  CheckIncoming
-;    Execution is periodically carried out from here by the program to
-;    check for incoming data during idle times.
-; ************************************************************************
+;   This label is executed by the program periodically to check incoming
+;   messeges.
 :CheckIncoming
 
-Assign f_sending "FALSE"
+	Assign f_Sending "FALSE"
 
-; Read a character
-ReadFromPort 1
+	ReadFromPort 1 1
 
-; If there is one and it is STX, start the receive record with it.
-if "$(_PORTCHARS)" EQ "<#2>"
-  Assign ReceiveRec "<#2>"
-if "$(_PORTCHARS)" EQ "<#2>"
-  goto ReceiveRecord
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Goto ReceiveRecord
 
-; If there are no characters, we have finished
-if "$(_PORTCHARS)" NE ""
-  Echo Rx: $(_PORTCHARS)
+	if "$(_PORTCHARS)" EQ "<#36>"
+		Goto HBRECORD
 
-; Release back to the program, we have not received an STX
+	if "$(_PORTCHARS)" NE ""
+		Echo Rx: $(_PORTCHARS)
+
 Exit
+; ************************************************************************
+
 
 ; ************************************************************************
-; RRECORD
-;  Setup for receiving a reply message
+;  ReceiveRecord
+;   This label is called when we have received an STX within the
+;   CheckIncoming or SendRecord labels.
+:ReceiveRecord
+
+	Assign ReceivedRec "<#2>"
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto ReceiveRecord
+
+	Assign RecType "$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#36>"
+		Goto HBRECORD
+
+:ReceiveRecord_ReadNextChar
+
+	ReadFromPort 1 1
+
+	if "$(_PORTCHARS)" NE ""
+		Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	if "$(_PORTCHARS)" EQ "<#3>"
+		Goto ReceiveRecord_FinishedReceiving
+
+Goto ReceiveRecord_ReadNextChar
+
+:ReceiveRecord_FinishedReceiving
+
+	Echo Rx: $(ReceivedRec)
+	Send <#6>
+	Echo Tx: <#6>
+
+	if "$(RecType)" EQ ""
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "A"
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "D"
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "H"
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "M"
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "T"
+		Goto ReceiveRecord_QuitReceiving
+	if "$(RecType)" EQ "U"
+		Goto ReceiveRecord_QuitReceiving
+
+	if "$(RecType)" EQ "C"
+		Call CRECORD
+	if "$(RecType)" EQ "J"
+		Call JRECORD
+	if "$(RecType)" EQ "P"
+		Call PRECORD
+	if "$(RecType)" EQ "R"
+		Call RRECORD
+	if "$(RecType)" EQ "S"
+		Call SRECORD
+
+	Assign _G_IN_RECORD "$(ReceivedRec)"
+	ParseInRecord
+
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Echo Error with Received Record - Record ignored
+	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+		Goto ReceiveRecord_QuitReceiving
+
+	if "$(RecType)" EQ "C"
+		Call HandleCRecord
+	if "$(RecType)" EQ "J"
+		Call HandleJRecord
+	if "$(RecType)" EQ "P"
+		Call HandlePRecord
+	if "$(RecType)" EQ "R"
+		Call HandleRRecord
+	if "$(RecType)" EQ "S"
+		Call HandleRRecord
+
+:ReceiveRecord_QuitReceiving
+
+	if "$(f_Sending)" EQ "TRUE"
+		Return
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  JustSendRecord
+;   This label is called when we have a record that we need to send to the
+;   client when we do not need a response.
+:JustSendRecord
+
+	Assign f_ReplyExtn "0"
+	Assign f_ReplyType1 "0"
+	Assign f_ReplyType2 "0"
+
+	Assign f_SendLabel "JustSendRecord"
+	Assign f_Sending "TRUE"
+
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer 25
+
+:JustSendRecord_WaitForACK
+
+	Sleep 10
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto SendError
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto JustSendRecord_WaitForACK
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Echo Rx: <#6>
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto JustSendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Echo Rx: <#21>
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Sleep 3000
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto JustSendRecord
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+	Goto JustSendRecord_WaitForACK
+
+:JustSendRecord_GotACK
+
+	Assign f_Sending "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendRecord
+;   This label is called when we have a record that we need to send to the
+;   client.
+:SendRecord
+
+	Assign f_SendLabel "SendRecord"
+	Assign f_Sending "TRUE"
+	Assign f_SendAttempts $(f_SendAttempts) + 1
+
+	if $(f_SendAttempts) GT 3
+		Echo Er: Failed to send EventID $(_EV_ID) three times, ignoring record.
+	if $(f_SendAttempts) GT 3
+		Goto IgnoreRecord
+
+	Send $(SendRec)
+	Echo Tx: $(SendRec)
+
+	StartWaitTimer2 25
+
+:SendRecord_WaitForACK
+
+	Sleep 10
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Goto SendError
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForACK
+
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Echo Rx: <#6>
+	if "$(_PORTCHARS)" EQ "<#6>"
+		Goto SendRecord_GotACK
+
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Echo Rx: <#21>
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Sleep 3000
+	if "$(_PORTCHARS)" EQ "<#21>"
+		Goto SendRecord
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+	Goto SendRecord_WaitForACK
+
+:SendRecord_GotACK
+
+	Assign f_WaitingForReply "TRUE"
+	Assign f_GotReply "FALSE"
+
+	StartWaitTimer2 120
+
+:SendRecord_WaitForReply
+
+	ReadFromPort 1 1
+
+	if "$(_WAITTIMEEXPIRED2)" EQ "TRUE"
+		Goto SendError
+
+	if "$(_PORTCHARS)" EQ ""
+		Goto SendRecord_WaitForReply
+
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Assign ReceivedRec "<#2>"
+	if "$(_PORTCHARS)" EQ "<#2>"
+		Call ReceiveRecord
+
+	if "$(f_GotReply)" EQ "TRUE"
+		Goto SendRecord_GotReply
+
+	Goto SendRecord_WaitForReply
+
+:SendRecord_GotReply
+
+	Assign f_Sending "FALSE"
+	Assign f_WaitingForReply "FALSE"
+	Assign f_GotReply "FALSE"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  SendError
+;   This label is called when we have failed to send a record
+:SendError
+
+	Echo If: Timeout waiting for ACK or a reply.
+	Sleep 5000
+
+Goto CheckIncoming
+; ************************************************************************
+
+
+; ************************************************************************
+;  CRECORD
+;   Setup the expected format for receiving a C record (Room Status)
+:CRECORD
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>C<in_Extn:TEXT:8:RJ,SP><in_RSMaidID:TEXT:4:RJ,SP><in_RSStatus:TEXT:1:LJ,SP><in_BCC:TEXT:2:RJ,ZP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  HBRECORD
+;   Setup the expected format for receiving an HB record (Message Waiting)
+:HBRECORD
+
+	ReadFromPort 5 1
+	Assign ReceivedRec "$(ReceivedRec)$(_PORTCHARS)"
+
+	Echo Rx: $(ReceivedRec)
+
+	if "<ReceivedRec:TEXT:1:LJ,SP>" NE "<#2>"
+		Echo Db: Record with no STX in ReceiveRecord_FinishedReceiving
+
+	Sleep 500
+
+Exit
+; ************************************************************************
+
+
+; ************************************************************************
+;  JRECORD
+;   Setup the expected format for receiving a J record (Call Record)
+:JRECORD
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_CRString:TEXT:500:><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  PRECORD
+;   Setup the expected format for receiving a P record (Wakeup)
+:PRECORD
+
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:8:RJ,SP>W  <in_WKCode:TEXT:1:LJ,SP> <in_WKActDate:TEXT:10:RJ,SP><in_WKOriginator:TEXT:5:LJ,SP><in_WKTime:TIME:4:HHMM> <in_BCC:TEXT:2:RJ,ZP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  RRECORD
+;   Setup the expected format for receiving an R record (Reply)
 :RRECORD
 
-  Assign RecType "REP"
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-
-if "$(PinLength)" EQ "4"
-	Assignasis _G_IN_RECORDFORMAT "<#2>R<in_Extn:TEXT:8:RJ,SP><in_PW:TEXT:4:RJ,SP><in_Action:TEXT:1:SP><in_Reason:TEXT:1:SP><in_BCC:TEXT:2:RJ,ZP><#3>"
-if "$(PinLength)" EQ "6"
-	Assignasis _G_IN_RECORDFORMAT "<#2>S<in_Extn:TEXT:8:RJ,SP><in_PW:TEXT:6:RJ,SP><in_Action:TEXT:1:SP><in_Reason:TEXT:1:SP><in_BCC:TEXT:2:RJ,ZP><#3>"
-	
-Return
-; ************************************************************************
-
-; ************************************************************************
-; RSRECORD
-;  Setup for receiving a room status record
-:RSRECORD
-
-  Assign RecType "RS"
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-  assignasis _G_IN_RECORDFORMAT "<#2>C<in_Extn:TEXT:8:RJ,SP><in_RSMaidID:TEXT:4:RJ,SP><in_RSStatus:TEXT:1:ZP><in_BCC:TEXT:2:RJ,ZP><#3>"
-
-Return
-; ************************************************************************
-
-; ************************************************************************
-; MWRECORD
-;  Setup for receiving a message waiting record
-:MWRECORD
-
-  Assign RecType "MW"
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-  assignasis _G_IN_RECORDFORMAT "<#2>F<in_Extn:TEXT:8:RJ,SP><in_MWChar:TEXT:1:SP><in_MWStatus:TEXT:1:ZP><dummy:TEXT:5:RJ,SP><in_BCC:TEXT:2:RJ,ZP><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>R<in_Extn:TEXT:8:RJ,SP><in_PW:TEXT:4:RJ,SP><in_Action:TEXT:1:SP><in_Reason:TEXT:1:SP><in_BCC:TEXT:2:RJ,ZP><#3>"
 
 Return
 ; ************************************************************************
 
 
 ; ************************************************************************
-; MBRECORD
-;  Setup for receiving a data transfer record (used for Minibar)
-:MBRECORD
+;  SRECORD
+;   Setup the expected format for receiving an S record (Reply)
+:SRECORD
 
-  Assign RecType "MB"
-
-; OPT: Interactive data transfer may be provided which has a # character
-;      on the end of the in_MBData string.  If provided this way, you will
-;      need to use the second of the following 2 lines.
-
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-  assignasis _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:8:RJ,SP><in_MBCode:TEXT:5:RJ,SP><in_MBData:TEXT:20:LJ,SP><in_BCC:TEXT:2:RJ,ZP><#3>"
-; assignasis _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:5:RJ,SP><in_MBCode:TEXT:5:RJ,SP><in_MBData:TEXT:20:>#<dummy:TEXT:20:><in_BCC:TEXT:2:RJ,ZP><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>S<in_Extn:TEXT:8:RJ,SP><in_PW:TEXT:6:RJ,SP><in_Action:TEXT:1:SP><in_Reason:TEXT:1:SP><in_BCC:TEXT:2:RJ,ZP><#3>"
 
 Return
 ; ************************************************************************
 
 
 ; ************************************************************************
-; CRRECORD
-;  Setup for receiving a data transfer record (used for Minibar)
-:CRRECORD
+;  HandleCRecord
+;    This label is called when we have a C record to handle
+:HandleCRecord
 
-  Assign RecType "CR"
-
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-  assignasis _G_IN_RECORDFORMAT "<#2><in_CRString:TEXT:500:><#3>"
+	if "$(in_RSStatus)" NE ""
+		CreateRoomStatus "$(in_Extn)" "$(in_RSStatus)"
 
 Return
 ; ************************************************************************
 
 
 ; ************************************************************************
-; WKERECORD
-;  Setup for receiving a wakeup event record.
-:WKERECORD
+;  HandleFRecord
+;    This label is called when we have an F record to handle
+:HandleFRecord
 
-  Assign RecType "WKE"
-
-; Length field for in_Extn needs changing to whatever ExtnLength is.
-  assignasis _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:8:RJ,SP><in_WKCode:TEXT:5:LJ,SP><in_WKActDate:TEXT:10:RJ,SP><in_WKOriginator:TEXT:5:LJ,SP><in_WKTime:TIME:4:HHMM> <in_BCC:TEXT:2:RJ,ZP><#3>"
-
-Return
-; ************************************************************************
-
-; ************************************************************************
-; HandleReplyRecord
-;  Handle the R record we have just received.
-:HandleReplyRecord
-
-; If this is an action of I and a reason of space, we need to store the password
-; we are given.
-  if "$(in_Action)" EQ "I"
-    goto VM_PASSWD_REPLY
-
-  if "$(in_Action)" EQ "I"
-    goto Finish_HandleReplyRecord
-
-; Action J is checkin command refused.
-  if "$(in_Action)" EQ "J"
-    Goto Reply_RefusedCheckin
-
-  if "$(in_Action)" EQ "N"
-    Goto Reply_RefusedModification
-
-goto Finish_HandleReplyRecord
-
-
-:VM_PASSWD_REPLY
-  if "<in_Reason:TEXT:1:RJ,SP>" EQ " "
-    AddToGuestInfo "$(in_Extn)" "VM_PASSWORD_$(In_Extn)" "$(in_PW)"
-
-  goto Finish_HandleReplyRecord
-
-:Reply_RefusedCheckin
-
-  if "$(in_Reason)" EQ "A"
-    Call Reply_CheckoutThenCheckin
-
-  goto Finish_HandleReplyRecord
-
-:Reply_RefusedModification
-
-  if "$(in_Reason)" EQ "A"
-    Call Reply_Checkin
-
-  goto Finish_HandleReplyRecord
-
-  
-:Finish_HandleReplyRecord
-
-Return
-; ************************************************************************
-
-; ************************************************************************
-;  Reply_CheckoutThenCheckin
-;    We have received a reply record that says the checkin was refused
-;    because the room weas checked in.  We need to check that room out
-;    and then in again.
-:Reply_CheckoutThenCheckin
-
-  if "$(f_sending)" EQ "TRUE"
-    Call NotHandled
-
-  ; Check out the room
-  Assign SendRec "D<in_Extn:TEXT:$(ExtnLength):RJ,SP>"
-  GenerateBCCChar "HEXString" "$(SendRec)"
-  Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-  ; Go on to send it
-  Call SendRecord
-
-  ; Query the guest name from the system.
-  QueryGuestName "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign GuestName "$(_G_RESULT)"
-
-  ; Query whether the room can make calls from the system.
-  QueryAllowCalls "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign AllowCalls "$(_G_RESULT)"
-
-  if "$(AllowCalls)" EQ "TRUE"
-    Assign WorkVal "$(OpenDOD)"
-  if "$(AllowCalls)" NE "TRUE"
-    Assign WorkVal "$(CloseDOD)"
-
-  ; Query the language code for the room.
-  QueryLanguageCode "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign LangCode "$(_G_RESULT)"
-
-  if "$(LangCode)" EQ "0"
-    Assign LangCode "1"
-  if "$(LangCode)" EQ ""
-    Assign LangCode "1"
-
-  ; Check it in
-  Assign temp_extn "<in_Extn:TEXT:4:RJ,ZP>"
-  
-  if "$(PinLength)" EQ "4"
-    Assign SendRec "A<in_Extn:TEXT:$(ExtnLength):RJ,SP> <_G_RESULT:TEXT:10:UC,AN,LJ,SP>                                     "
-  if "$(PinLength)" EQ "6"
-    Assign SendRec "B<in_Extn:TEXT:$(ExtnLength):RJ,SP> <_G_RESULT:TEXT:10:UC,AN,LJ,SP>                                       "
-    
-  GenerateBCCChar "HEXString" "$(SendRec)"
-  Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-  ; Go on to send it
-  Call SendRecord
-  
-  ; If we are not doing voicemail, skip the next bit
-  if "$(DoVoicemail)" NE "TRUE"
-    Goto Reply_CheckoutThenCheckin_SkipVMCheckin
-
-  Assign SendRec "F<in_Extn:TEXT:$(ExtnLength):RJ,SP>P1     "
-  GenerateBCCChar "HEXString" "$(SendRec)"
-  Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-  Call SendRecord
-
-:Reply_CheckoutThenCheckin_SkipVMCheckin
+	if "$(in_MWStatus)" EQ "0"
+		CreateMessageWaiting "$(in_Extn)" "FALSE"
+	if "$(in_MWStatus)" NE "0"
+		CreateMessageWaiting "$(in_Extn)" "TRUE"
 
 Return
 ; ************************************************************************
 
 
 ; ************************************************************************
-;  Reply_Checkin
-;    We have received a reply record that says the modification was 
-;    refused because the room was not checked in.  We need to check that 
-;    in now..
-:Reply_Checkin
+;  HandleJRecord
+;    This label is called when we have a J record to handle
+:HandleJRecord
 
-  if "$(f_sending)" EQ "TRUE"
-    Call NotHandled
-
-  ; Query the guest name from the system.
-  QueryGuestName "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign GuestName "$(_G_RESULT)"
-
-  if "$(GuestName)" EQ ""
-    goto Reply_Checkin_Finish
-    
-  ; Query whether the room can make calls from the system.
-  QueryAllowCalls "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign AllowCalls "$(_G_RESULT)"
-
-  if "$(AllowCalls)" EQ "TRUE"
-    Assign WorkVal "$(OpenDOD)"
-  if "$(AllowCalls)" NE "TRUE"
-    Assign WorkVal "$(CloseDOD)"
-
-  ; Query the language code for the room.
-  QueryLanguageCode "<in_Extn:TEXT:$(ExtnLength):>"
-  Assign LangCode "$(_G_RESULT)"
-
-  if "$(LangCode)" EQ "0"
-    Assign LangCode "1"
-  if "$(LangCode)" EQ ""
-    Assign LangCode "1"
-
-  ; Check it in
-  Assign temp_extn "<in_Extn:TEXT:4:RJ,ZP>"
-  
-  if "$(PinLength)" EQ "4"
-  Assign SendRec "A<in_Extn:TEXT:$(ExtnLength):RJ,SP> <GuestName:TEXT:10:UC,AN,LJ,SP>          <LangCode:TEXT:1:ZP>        $(WorkVal)                "
-  if "$(PinLength)" EQ 6"
-  Assign SendRec "B<in_Extn:TEXT:$(ExtnLength):RJ,SP> <GuestName:TEXT:10:UC,AN,LJ,SP>          <LangCode:TEXT:1:ZP>          $(WorkVal)                "
-  
-  GenerateBCCChar "HEXString" "$(SendRec)"
-  Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-
-  ; Go on to send it
-  Call SendRecord
-
-  ; If we are not doing voicemail, skip the next bit
-  if "$(DoVoicemail)" NE "TRUE"
-    Goto Reply_Checkin_SkipVMCheckin
-
-  Assign SendRec "F<in_Extn:TEXT:$(ExtnLength):RJ,SP>P1     "
-  GenerateBCCChar "HEXString" "$(SendRec)"
-  Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-  Call SendRecord
-
-:Reply_Checkin_SkipVMCheckin
-
-:Reply_Checkin_Finish
+	PassToDataCollection $(in_CRString)
 
 Return
 ; ************************************************************************
 
 
 ; ************************************************************************
-;  CreateRSEvent
-;    Creates a room status event.
-:CreateRSEvent
-  CreateRoomStatus "$(in_Extn)" "$(in_RSStatus)"
-Return
-; ************************************************************************
+;  HandleKRecord
+;    This label is called when we have a K record to handle
+:HandleKRecord
 
-; ************************************************************************
-;  CreateMWEvent
-;    Creates a message waiting event.
-:CreateMWEvent
-
-  if "<in_MWChar:TEXT:1:SP>" NE "M"
-    goto CreateMWEvent_Skip
-
-  if "<in_MWStatus:TEXT:1:ZP>" EQ "0"
-    CreateMessageWaiting "$(in_Extn)" "FALSE"
-  if "<in_MWStatus:TEXT:1:ZP>" NE "0"
-    CreateMessageWaiting "$(in_Extn)" "TRUE"
- 
-:CreateMWEvent_Skip
+	PassToDataCollection $(in_CRString)
 
 Return
 ; ************************************************************************
 
-; ************************************************************************
-;  CreateMBEvent
-;    Creates a message waiting event.
-:CreateMBEvent
 
-  CreateMinibar "$(in_Extn)" "001" "0" "0" "$(in_MBData)"
+; ************************************************************************
+;  HandlePRecord
+;    This label is called when we have a P record to handle
+:HandlePRecord
+
+	if "$(in_WKCode)" EQ "P"
+		Echo If: Wakeup Call Set for <in_WKTime:TIME:5:HH:MM> on $(in_Extn).
+	if "$(in_WKCode)" EQ "P"
+		CreateSetWakeup "$(in_Extn)" "" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "P"
+		Return
+
+	if "$(in_WKCode)" EQ "M"
+		Echo If: Wakeup Call Modified for <in_WKTime:TIME:5:HH:MM> on $(in_Extn).
+	if "$(in_WKCode)" EQ "M"
+		Return
+
+	if "$(in_WKCode)" EQ "C"
+		Echo If: Wakeup Call Canceled for <in_WKTime:TIME:5:HH:MM> on $(in_Extn).
+	if "$(in_WKCode)" EQ "C"
+		CreateClearWakeup "$(in_Extn)" "" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "C"
+		Return
+
+	if "$(in_WKCode)" EQ "R"
+		Echo If: Wakeup Call Rejected for <in_WKTime:TIME:5:HH:MM> on $(in_Extn).
+	if "$(in_WKCode)" EQ "R"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "R"
+		Return
+
+	if "$(in_WKCode)" EQ "N"
+		Echo If: Wakeup Call Failed for <in_WKTime:TIME:5:HH:MM> on Extension $(in_Extn) - No Answer.
+	if "$(in_WKCode)" EQ "N"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "N"
+		Return
+
+	if "$(in_WKCode)" EQ "O"
+		Echo If: Wakeup Call Failed for <in_WKTime:TIME:5:HH:MM> on Extension $(in_Extn) - Line out of Order.
+	if "$(in_WKCode)" EQ "O"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "O"
+		Return
+
+	if "$(in_WKCode)" EQ "B"
+		Echo If: Wakeup Call Failed for <in_WKTime:TIME:5:HH:MM> on Extension $(in_Extn) - Busy.
+	if "$(in_WKCode)" EQ "B"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "B"
+		Return
+
+	if "$(in_WKCode)" EQ "A"
+		Echo If: Wakeup Call Answered for <in_WKTime:TIME:5:HH:MM> on Extension $(in_Extn).
+	if "$(in_WKCode)" EQ "A"
+		CreateWakeupDelivered "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WKTime:TIME:4:HHMM>"
+	if "$(in_WKCode)" EQ "A"
+		Return
+
+	Echo Db: Unknown Wakeup Result "$(in_WKCode)" for $(in_WKTime) on Extension $(in_Extn).
 
 Return
 ; ************************************************************************
 
-; ************************************************************************
-;  HandleWakeupEvent
-;    Handles the wakeup event if it is a failure to deliver.
-:HandleWakeupEvent
 
-  Echo Failed wakeup call for <in_WKTime:TIME:5:HH:MM> to extension $(in_Extn).  Reason: $(WKEMessage).
-;  PopupBroadcast Failed wakeup call for <in_WKTime:TIME:5:HH:MM> to extension $(in_Extn).  Reason: $(WKEMessage).
+; ************************************************************************
+;  HandleRRecord
+;    This label is called when we have an R record to handle
+:HandleRRecord
+
+	if "$(f_ReplyExtn)" EQ "$(in_Extn)"
+		Call HandleRRecord_CheckType
+
+	if "$(in_Action)" EQ "I"
+		Echo If: Checkin completed for $(in_Extn).  Voicemail Password: "$(in_PW)".
+
+	if "$(in_Action)" EQ "J"
+		Goto HandleRRecord_RefusedCheckin
+
+	if "$(in_Action)" EQ "A"
+		Goto HandleRRecord_AcceptedAllocation
+
+	if "$(in_Action)" EQ "B"
+		Goto HandleRRecord_RefusedAllocation
+
+	if "$(in_Action)" EQ "N"
+		Goto HandleRRecord_RefusedModification
+
+	if "$(in_Action)" EQ "W"
+		Goto HandleRRecord_RefusedAttribution
+
+	if "$(in_Action)" EQ "P"
+		Goto HandleRRecord_RefusedCheckout
+
+	Return
+
+:HandleRRecord_CheckType
+
+	if "$(f_ReplyType1)" EQ "$(in_Action)"
+		Assign f_GotReply "TRUE"
+	if "$(f_ReplyType2)" EQ "$(in_Action)"
+		Assign f_GotReply "TRUE"
+
+	if "$(f_GotReply)" EQ "TRUE"
+		Echo If: Received extension and type match reply.
+
+	Return
+
+:HandleRRecord_AcceptedAllocation
+
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Guest extn out of order.
+	if "$(in_Reason)" NE "O"
+		Echo If: Allocation completed for GPIN $(in_Extn) to Extension $(_EV_EXTNNUMBER).
+
+	Return
+
+:HandleRRecord_RefusedAllocation
+
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Guest extn out of order.
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid GPIN.
+
+	if "$(in_Reason)" EQ "R"
+		Echo Er: PBX responded - Invalid extn number.
+
+	if "$(in_Reason)" EQ "U"
+		Echo Er: PBX responded - Unavailable extn number - Under repair.
+
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	Return
+
+:HandleRRecord_RefusedCheckout
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid GPIN.
+
+	if "$(in_Reason)" EQ "L"
+		Echo Er: PBX responded - Line in use.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Mailbox has messages.
+
+	Return
+
+:HandleRRecord_RefusedAttribution	
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid GPIN.
+
+	if "$(in_Reason)" EQ "A"
+		Echo Er: PBX responded - Unavailable guest number - Not checked in.
+
+	if "$(in_Reason)" EQ "W"
+		Echo Er: PBX responded - Mailbox in use.
+
+	if "$(in_Reason)" EQ "V"
+		Echo Er: PBX responded - Voicemail unavailable.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Not consulted messages.
+
+	if "$(in_Reason)" EQ "Y"
+		Echo Er: PBX responded - Out of mailbox number range.
+
+	if "$(in_Reason)" EQ "Z"
+		Echo Er: PBX responded - Mailbox already exists.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Feature not available.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Wrong message.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Other.
+
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	Return
+
+:HandleRRecord_RefusedCheckin
+
+	if "$(in_Reason)" EQ "A"
+		Call HandleRRecord_AlreadyCheckedIn
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid number.
+
+	if "$(in_Reason)" EQ "E"
+		Echo Er: PBX responded - Empty GPIN Database - No GPINs Available.
+
+	if "$(in_Reason)" EQ "N"
+		Echo Er: PBX responded - Name too short.
+
+	if "$(in_Reason)" EQ "X"
+		Echo Er: PBX responded - Phonebook capacity exceeded.
+
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	Return
+
+:HandleRRecord_RefusedModification
+
+	if "$(in_Reason)" EQ "A"
+		Call HandleRRecord_NotCheckedIn
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid number.
+
+	if "$(in_Reason)" EQ "P"
+		Echo Er: PBX responded - Password is not available.
+
+	if "$(in_Reason)" EQ "N"
+		Echo Er: PBX responded - Name too short.
+		
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	Return
+
+:HandleRRecord_AlreadyCheckedIn
+
+	Echo Er: PBX responded - Extn already checked in - Actioning.
+
+//	Using f_ReplyExtn instead of _EV_EXTNNUMBER in case it's a Room Transfer
+	Assign f_Extn "$(f_ReplyExtn)"
+
+//	Check out the Extension
+	Assign SendRec "D<f_Extn:TEXT:8:RJ,SP>"
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Call JustSendRecord
+
+	Sleep 1000
+
+//	Set the password
+	Assign g_Password "987654"
+
+//	Calculate the Language Code
+	Assign g_LangCode "$(_EV_LANGCODE)"
+	if  "$(_EV_LANGCODE)" EQ ""
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) LT 1
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) GT 4
+		Assign g_LangCode "1"
+
+//	Check in the Extension (Using f_ReplyExtn in case it's a Room Transfer)
+	Assign SendRec "B<f_Extn:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "A<f_Extn:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Assign f_ReplyType1 "I"
+	Assign f_ReplyType2 "J"
+	Assign f_ReplyExtn "$(f_Extn)"
+	Call SendRecord
+
+	Return
+
+:HandleRRecord_NotCheckedIn
+
+	Echo Er: PBX responded - Extn not checked in - Actioning.
+
+//	Using f_ReplyExtn instead of _EV_EXTNNUMBER in case it's a Room Transfer
+	Assign f_Extn "$(f_ReplyExtn)"
+
+//	Set the password
+	Assign g_Password "987654"
+
+//	Calculate the Language Code
+	Assign g_LangCode "$(_EV_LANGCODE)"
+	if  "$(_EV_LANGCODE)" EQ ""
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) LT 1
+		Assign g_LangCode "1"
+	if  $(_EV_LANGCODE) GT 4
+		Assign g_LangCode "1"
+
+	Assign SendRec "B<f_Extn:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	if "$(s_PasswordLength)" EQ "4"
+		Assign SendRec "A<f_Extn:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><s_OpenDOD:TEXT:2:RJ,ZP>                "
+	GenerateBCCChar "HEXString" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
+	Assign f_ReplyType1 "I"
+	Assign f_ReplyType2 "J"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Return
+; ************************************************************************
+
 
 ; ************************************************************************
-;  HandleCRString
-;    Handles the call record string.
-:HandleCRString
+;  HandleSuiteMode
+;   This label is called when we need to check if an extension is the
+;   suite or extension.
+:HandleSuiteMode
 
-  PassToDataCollection $(in_CRString)
+	ContainsStr "SUITE" "<_EV_EXTNFACILITIES:TEXT:30:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto HandleOKAndExit
+
+	Return
+
+:HandleSuiteMode_Source
+
+	ContainsStr "SUITE" "<_EV_EXTNFACILITIES:TEXT:30:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RoomTransfer_SkipCheckout
+
+	Return
+
+:HandleSuiteMode_Destination
+
+	ContainsStr "SUITE" "<_EV_TRDESTEXTNFACILITIES:TEXT:30:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto HandleOKAndExit
 
 Return
+; ************************************************************************
+
 
 ; ************************************************************************
-; HandleOKAndExit
-;  Flag that the processing was successful and exit the script.
+;  HandleOKAndExit
+;   This label is called when we have completed sending a record and need
+;   to flag it as processed to move on to the next event.
 :HandleOKAndExit
 
-  FLAGPROCESSED OK
+	FlagProcessed OK
+	Assign f_SendAttempts 0
+	Sleep 500
 
 Exit
 ; ************************************************************************
 
-; ************************************************************************
-; HANDLEOK
-;  Flag that the processing was successful.
-; ************************************************************************
-:HANDLEOK
-
-  FLAGPROCESSED OK
-
-RETURN
 
 ; ************************************************************************
-; NotHandled
-;  Flag that the processing has not completed.
+;  IgnoreRecord
+;   This label is called when we are not interested in a particular record
+;   and need to flag it as processed to move on to the next event.
+:IgnoreRecord
+
+	FlagProcessed OK
+	Assign f_SendAttempts 0
+	Sleep 500
+
+Exit
 ; ************************************************************************
-:NotHandled
-
-  FlagProcessed NOT
-
-Return
