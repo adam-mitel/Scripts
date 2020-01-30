@@ -8,7 +8,7 @@
 ;
 ;                                                              AU-20131017
 ;
-;  Modifications - AU - 2020-01-27 - 50.0.3.0
+;  Modifications - AU - 2020-01-30 - 50.0.3.0
 ;	* Complete rewrite based on the AHL script and OHL API R2.3.12
 ;
 ;  Modifications - AU - 2013-10-28 - 50.0.2.0
@@ -104,7 +104,7 @@ Exit
 	Assign f_ReplyType1 "0"
 	Assign f_ReplyType2 "0"
 
-	Assign f_Sending "TRUE"
+	Assign f_Sending "FALSE"
 
 	Assign SendRec "<#2>@FFFF<#3>"
 	Send $(SendRec)
@@ -204,6 +204,7 @@ Goto IgnoreRecord
 
 	Assign g_Password ""
 
+	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
 	if "$(s_PasswordLength)" EQ "4"
 		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
 	GenerateBCCChar "HEXString" "$(SendRec)"
