@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the script for interfacing to a Cisco Call Manager via our
 ;  CiscoCMClientService, minimum version 50.2.5.0.
 ;
 ;                                                              AU-20131028
+;
+;  Modifications - AU - 2020-02-23 - 50.0.6.0
+;	* Added option s_RoomBeforeName
 ;
 ;  Modifications - AU - 2019-02-06 - 50.0.5.0
 ;	* Modifications to DND to remove CSS and add CFA (Call Forward All)
@@ -50,6 +53,7 @@ define s_ResetOnCheckout
 define s_DoHardReset
 define s_DoNotDisturb
 define s_DNDForwardNumber
+define s_RoomBeforeName
 define s_SetIdleURL
 define s_SetServicesURL
 define s_IdleURL
@@ -67,6 +71,9 @@ define s_ServicesURL
 
 //	Leave this parameter alone
 	Assign s_NameLength $(s_TotalNameLength) - 5
+
+//	OPT: Set whether to add the Room Number before the name
+	Assign s_RoomBeforeName "FALSE"
 
 //	OPT: Assign the CSS names set in the Cisco CallManager
 //	     Note that not all of these may be used
@@ -198,6 +205,9 @@ Goto IgnoreRecord
 		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_TotalNameLength):AN>"
 	if "$(_EV_CILANGCODE)" NE ""
 		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_CILANGCODE:TEXT:2:AN>)"
+
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) $(g_GuestName)"
 
 	Echo CI: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
@@ -366,6 +376,9 @@ Goto HandleOKAndExit
 	if "$(_EV_RULANGCODE)" NE ""
 		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_RULANGCODE:TEXT:2:AN>)"
 
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) $(g_GuestName)"
+
 	Echo RU: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
 	Call SendRecord
@@ -500,6 +513,9 @@ Goto IgnoreRecord
 		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_TotalNameLength):AN>"
 	if "$(_EV_LANGCODE)" NE ""
 		Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:$(s_NameLength):AN> (<_EV_LANGCODE:TEXT:2:AN>)"
+
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_TRDESTROOMNUMBER) $(g_GuestName)"
 
 	Echo TR: Setting name to "$(g_GuestName)" for Extension $(_EV_TRDESTEXTNNUMBER).
 	Assign SendRec "SOAPSETNAME|1|$(_EV_TRDESTEXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"

@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.26.0
+; Script Version: 50.0.27.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2020-02-11 - 50.0.27.0
+;	* Added CS request and handler to GC record
 ;
 ;  Modifications - AU - 2019-10-02 - 50.0.26.0
 ;	* Modified Database Swap to always checkin the first room with GSY
@@ -2134,6 +2137,17 @@ Return
 
 	CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)" "$(in_Credential)"
 
+	if "$(in_COS)" EQ ""
+		Goto HandleGC_SkipCOS
+
+	Assign WorkVal "FALSE"
+	if "$(in_COS)" EQ "3"
+		Assign WorkVal "TRUE"
+
+	CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "$(WorkVal)" "TRUE" "TRUE" "$(in_COS)"
+
+:HandleGC_SkipCOS
+
 //	Check for DDI Allocation.
 	if "$(in_EquipSrcStatus)" EQ  "0"
 		CreateClearDDI "$(in_SrcRoom)"
@@ -2155,6 +2169,17 @@ Return
 :HandleGC_RoomUpdate
 
 	CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)" "$(in_Credential)"
+
+	if "$(in_COS)" EQ ""
+		Goto HandleGC_RoomUpdate_SkipCOS
+
+	Assign WorkVal "FALSE"
+	if "$(in_COS)" EQ "3"
+		Assign WorkVal "TRUE"
+
+	CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "$(WorkVal)" "TRUE" "TRUE" "$(in_COS)"
+
+:HandleGC_RoomUpdate_SkipCOS
 
 	if "$(s_NoPostCOS)" NE "TRUE"
 		Goto HandleGC_SkipNoPost
@@ -3059,7 +3084,7 @@ Return
 	Call SendRecord
 
 //	Send Link Record (LR) message for Guest Update (GC).
-	Assign SendRec "LR|RIGC|FLDATIRNG#ROGNGFGTGGGAGDGVGLNPGS"
+	Assign SendRec "LR|RIGC|FLDATIRNG#ROGNGFGTGGGAGDGVGLNPCSGS"
 
 	if "$(s_TVRights)" EQ "TRUE"
 		Assign SendRec "$(SendRec)TVVR"
