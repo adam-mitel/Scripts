@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.13.0
+; Script Version: 50.0.14.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2020-04-08 - 50.0.14.0
+;	* Added option for Local and National COS (Coverage Paths 1 and 2)
 ;
 ;  Modifications - AU - 2019-04-29 - 50.0.13.0
 ;	* Modified Room Transfer to check separate Suite Services for
@@ -75,6 +78,8 @@ define s_DoVIP
 define s_UseRST
 define s_RSTBarCOS
 define s_RSTUnbarCOS
+define s_RSTLocalCOS
+define s_RSTNationalCOS
 define s_RSTUseSource
 define s_Connection
 define s_SuiteServices
@@ -129,10 +134,17 @@ Assign s_UseRST "YES"
 
 ; OPT: If using the new RST command then set here the Bar and Unbar class of
 ;      service IDs as required. The defaults are Bar 0 and Unbar 2.
+;
 ;      These values are in the Hospitality settings, NOT the actual COR number
+;
 ;      These values are only valid between "0" and "5"
+;
+;      If Local and National are not used, set to the same as Bar
+;
 Assign s_RSTBarCOS "0"
 Assign s_RSTUnbarCOS "2"
+Assign s_RSTLocalCOS "0"
+Assign s_RSTNationalCOS "0"
 
 ; OPT: Enable this option to send the RST code we received from emulating a Mitel
 Assign s_RSTUseSource "NO"
@@ -397,6 +409,11 @@ Goto HandleOKAndExit
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal "$(s_RSTUnbarCOS)"
 
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_RSTLocalCOS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_RSTNationalCOS)"
+
 	if "$(s_RSTUseSource)" EQ "YES"
 		Assign WorkVal "$(_EV_COSCOVERAGEPATH)"
 
@@ -525,6 +542,11 @@ goto IgnoreRecord
 	Assign WorkVal "$(s_RSTBarCOS)"
 	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal "$(s_RSTUnbarCOS)"
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_RSTLocalCOS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_RSTNationalCOS)"
 
 	Assign SendRec "<#02>RST<WorkVal:NUMBER:1:LJ,ZP> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
 	Call SendRecord
