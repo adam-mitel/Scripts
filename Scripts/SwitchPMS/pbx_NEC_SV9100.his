@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.0.2
+; Script Version: 50.0.3.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an NEC Philips
 ;  SV8100 PBX.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2020-04-12 - 50.0.3.0
+;	* Added option for Local and National COS (Coverage Paths 1 and 2)
 ;
 ;  Modifications - AU - 10/11/2013
 ;	* Modified incoming Room Status events to strip any * or # characters which
@@ -42,6 +45,8 @@ define f_WaitingForResponse
 define s_BarCOS
 define s_DoMessageWaiting
 define s_DoWakeups
+define s_LocalCOS
+define s_NationalCOS
 define s_UnbarCOS
 ;
 define in_Extension
@@ -60,8 +65,11 @@ Assign s_DoMessageWaiting "YES"
 Assign s_DoWakeups "YES"
 
 ; OPT: Specify Bar and Unbar codes.  Default is 0 for Bar, 3 for Unbar.
+;      If Local and National are not used, set to the same as Bar
 Assign s_BarCOS "0"
 Assign s_UnbarCOS "3"
+Assign s_LocalCOS "0"
+Assign s_NationalCOS "0"
 
 Exit
 ; ************************************************************************
@@ -217,6 +225,11 @@ Goto HandleOKAndExit
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal "$(s_UnbarCOS)"
 
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_LocalCOS)"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_NationalCOS)"
+
 	Assign SendRec "<#02>RST<WorkVal:TEXT:1:LJ,ZP> <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
@@ -280,6 +293,11 @@ Goto IgnoreRecord
 	Assign WorkVal "$(s_BarCOS)"
 	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal "$(s_UnbarCOS)"
+
+	if "$(_EV_TRCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "$(s_LocalCOS)"
+	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "$(s_NationalCOS)"
 
 	Assign SendRec "<#02>RST$(WorkVal) <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
