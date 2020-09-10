@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.13.0
+; Script Version: 50.0.14.0
 ; ************************************************************************
 ;
 ;  This is the HI Script for the InnLine Voicemail Systems later than:
@@ -7,6 +7,9 @@
 ;  InnLine 2020: 3.3.4
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2020-05-20 - 50.0.14.0
+;	* Modified Room Status so it doesn't create events with a blank status
 ;
 ;  Modifications - AU - 2018-12-05 - 50.0.13.0
 ;	* We now cater for AS in WAKEINFO FAILED messages for WAKESET
@@ -1085,7 +1088,8 @@ Return
 ;    This label is called when creating a Maid Status record
 :HandleMaidStatus
 
-	CreateRoomStatus "$(in_Room)" "$(in_Status)" "$(in_MaidID)"
+	if "$(in_Status)" NE ""
+		CreateRoomStatus "$(in_Room)" "$(in_Status)" "$(in_MaidID)"
 
 Return
 ; ************************************************************************
