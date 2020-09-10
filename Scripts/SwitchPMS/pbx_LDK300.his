@@ -1,10 +1,12 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.2.0
+; Script Version: 50.0.3.0
 ; ************************************************************************
 ;  This is the HI configuration script for interfacing to an LDK 300
 ;  exchange.
 ;
-;  NOTES: This switch uses text strings for incoming maid status. These
+;  NOTES: ECHO MODE should be DISABLED on the PBX
+;
+;         This switch uses text strings for incoming maid status. These
 ;         are converted to the following digits:
 ;         Clean = 1
 ;         Dirty = 2
@@ -14,16 +16,20 @@
 ;  Created:                                                    pjh-140102
 ;  Updated:                                                    pjh-210102
 ;
-;  Modifications - AU - 12/10/2015 - 50.0.2.0
+;  Modifications - AU - 2020-09-10 - 50.0.3.0
+;	* Updated to support ACK and NAK from PBX
+;	* Updated to filter SMDR records further
+;
+;  Modifications - AU - 2015-10-12 - 50.0.2.0
 ;	* Updated to support new features on the LG PBX:
 ;	    - Room Status codes for Inspected and Out of Service
 ;	    - Wakeup Answer Statuses for Answered and No Answer
 ;	* Changed Room Status codes from 0-1 to 1-4 to comply with our default set
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
-;  Modifications - AU - 27/08/2010
+;  Modifications - AU - 2010-08-27
 ;	* Added an option for Wakeup Calls
 ;	* Modified HandleRoomStatus label to stop processing any misinterpreted
 ;	  events causing HI to hang.
@@ -39,6 +45,7 @@ define RecType
 
 define WorkVal			// Used for string manipulation.
 define fError			// Used to indicate an error reply.
+define fSkip                    // Used to filter records.
 define FLAG			// Used to flag a timeout.
 define GotWaitString		// Used to flag whether we received the string
 				// we were waiting for.
@@ -73,8 +80,8 @@ assign CmdTimeout 5
 //      Wakeup commands
 Assign s_Wakeups "YES"
 
-; Ensure serial port is open.
-OpenPort
+// If the connection is Serial, uncommend the next line
+;OpenPort
 
 Exit
 ; ************************************************************************
@@ -329,6 +336,12 @@ Exit
 ; ************************************************************************
 :CheckIncoming
 
+//	Skip if this is remnents of another record
+	if "$(_PORTCHARS)" EQ "<#10>"
+		Exit
+	if "$(_PORTCHARS)" EQ "<#13>"
+		Exit		
+
 	Assign ReceivedRec ""
 	Assign RecType ""
 	Assign Flag "FALSE"
@@ -437,7 +450,18 @@ Return
 
 :CheckIncoming_GotCDR
 
-	PassToDataCollection $(ReceivedRec)
+	Assign fSkip "FALSE"
+
+//	Skip if this is not a Call Record
+	ContainsStr "Welcome" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign fSkip "TRUE"
+	ContainsStr "Your address "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Assign fSkip "TRUE"
+
+	if "$(fSkip)" NE "TRUE"
+		PassToDataCollection $(ReceivedRec)
 
 	if "$(f_ReturnToTWC)" EQ "TRUE"
 		Return
@@ -566,6 +590,16 @@ goto TakeWhatsComing_Read
 :GotCR
 
 	Echo Rx: $(ReceivedRec)
+
+	ContainsStr "<#36>ACK" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsStr "<#36>NAK" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo If: Got NAK - Already processed. Move on.
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
 
 //	Test if it is a Call Record
 	if "<ReceivedRec:TEXT:2:LJ,SP>" NE "<#47><#47>"
