@@ -1,11 +1,17 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.3.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to our
 ;  AvayaIPOfficeClientService
 ;
 ;                                                              AU-20120510
+;
+;  Modifications - AU - 2020-08-03 - 50.0.6.0
+;	* Fixed COS settings so it doesn't deal with DND if it's disabled
+;
+;  Modifications - AU - 2017-11-23 - 50.0.5.0
+;	* Fixed COS settings so it doesn't deal with DND if it's disabled
 ;
 ;  Modifications - AU - 2017-11-23 - 50.0.4.0
 ;	* Added enhanced COS settings
@@ -45,6 +51,9 @@ define s_MatchExtensionFaciliy
 define s_ProcessRoomStatus
 define s_ProcessDND
 define s_ProcessEnhancedCOS
+define s_RoomBeforeName
+;
+define g_GuestName
 ;
 ; ************************************************************************
 ;  INIT
@@ -83,16 +92,21 @@ define s_ProcessEnhancedCOS
 //	OPT: Set the DND CS2 User Rights value below (Case Sensitive)
 	Assign s_DNDCS2COS "NationalDND"
 
+//	OPT: Set whether we should send Room before Name
+	Assign s_RoomBeforeName "FALSE"
+
 //	OPT: If we are processing Room Status events via Call Records then
 //	     this should be set to TRUE and this interface should scan the
 //	     internal call records. If it is not done by Call Records then
 //	     it should be FALSE
-	Assign s_ProcessRoomStatus "TRUE"
+	Assign s_ProcessRoomStatus "FALSE"
 
 //	OPT: If you only wish to process events for which match a specific
 //	     Extension Facility then set it below. If you wish to process
 //	     all events leave it blank
 	Assign s_MatchExtensionFaciliy ""
+
+
 
 Goto PORT_OPENED
 ; ************************************************************************
@@ -183,8 +197,12 @@ Goto IgnoreRecord
 	if "$(s_MatchExtensionFaciliy)" NE ""
 		Call CheckExtensionFacility
 
-	Echo If: [CI] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
-	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:255:AN>"
+
+	Echo If: [CI] Setting name to "<g_GuestName:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<g_GuestName:TEXT:255:AN>\""
 	Call SendRecord
 
 	if "$(s_ProcessEnhancedCOS)" EQ "TRUE"
@@ -235,8 +253,13 @@ Goto HandleOKAndExit
 	if "$(s_ProcessEnhancedCOS)" EQ "TRUE"
 		Goto ClassOfService_EnhancedCOS
 
+	if "$(s_ProcessDND)" NE "TRUE"
+		Goto ClassOfService_NoDND
+
 	if "$(_EV_COSDNDACTION)" EQ "DONOTDISTURB"
 		Goto ClassOfService_DND
+
+:ClassOfService_NoDND
 
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal "$(s_UnbarCOS)"
@@ -309,8 +332,12 @@ Goto HandleOKAndExit
 	if "$(s_MatchExtensionFaciliy)" NE ""
 		Call CheckExtensionFacility
 
-	Echo If: [RU] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
-	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:255:AN>"
+
+	Echo If: [RU] Setting name to "<g_GuestName:TEXT:255:AN>" on $(_EV_EXTNNUMBER).
+	Assign SendRec "NAME $(_EV_EXTNNUMBER) \"<g_GuestName:TEXT:255:AN>\""
 	Call SendRecord
 
 Goto HandleOKAndExit
@@ -364,8 +391,12 @@ Goto IgnoreRecord
 	if "$(s_MatchExtensionFaciliy)" NE ""
 		Call CheckExtensionFacility_Dest
 
-	Echo If: [TR] Setting name to "<_EV_NAMEDISPLAY:TEXT:255:AN>" on $(_EV_TRDESTEXTNNUMBER).
-	Assign SendRec "NAME $(_EV_TRDESTEXTNNUMBER) \"<_EV_NAMEDISPLAY:TEXT:255:AN>\""
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:255:AN>"
+	if "$(s_RoomBeforeName)" EQ "TRUE"
+		Assign g_GuestName "$(_EV_TRDESTROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:255:AN>"
+
+	Echo If: [TR] Setting name to "<g_GuestName:TEXT:255:AN>" on $(_EV_TRDESTEXTNNUMBER).
+	Assign SendRec "NAME $(_EV_TRDESTEXTNNUMBER) \"<g_GuestName:TEXT:255:AN>\""
 	Call SendRecord
 
 	Assign WorkVal ""
