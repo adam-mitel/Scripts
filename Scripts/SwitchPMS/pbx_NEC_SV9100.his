@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an NEC Philips
 ;  SV8100 PBX.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2020-07-21 - 50.0.4.0
+;	* Added Clear Text parsing to STS message
 ;
 ;  Modifications - AU - 2020-04-12 - 50.0.3.0
 ;	* Added option for Local and National COS (Coverage Paths 1 and 2)
@@ -49,6 +52,7 @@ define s_LocalCOS
 define s_NationalCOS
 define s_UnbarCOS
 ;
+define in_ClearText
 define in_Extension
 define in_Status
 define in_Time
@@ -633,7 +637,7 @@ Return
 ;    Sets up the expected format for an ST record
 :STRecordFormat
 
-	AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:> <in_Extension:TEXT:8:><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:> <in_Extension:TEXT:8:LJ,SP> <in_ClearText:TEXT:255:><#3>"
 
 Return
 ; ************************************************************************
