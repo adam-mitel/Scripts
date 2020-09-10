@@ -1,10 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Locatel
 ;
-;    						               AU-20120626
+;                                                              AU-20120626
+;
+;  Modifications - AU - 2020-07-27 - 50.0.6.0
+;	* Modified HandleReservation to force if statements to compare strings to compare
+;	  strings instead of integers
 ;
 ;  Modifications - AU - 2018-05-20 - 50.0.5.0
 ;	* Resolved issue sending Bill Amount totals where there is a credited item
@@ -1772,7 +1776,7 @@ Return
 	if "$(f_CharPos)" GT "7"
 		Goto HandleReservation_ProcessLength
 
-	if "$(WorkVal)" NE "$(g_Reservation)"
+	if "ABC$(WorkVal)" NE "ABC$(g_Reservation)"
 		Echo Db: Original ResNo: [$(WorkVal)] - Processed ResNo: [$(g_Reservation)]
 
 	Return
@@ -1784,7 +1788,7 @@ Return
 
 	Assign g_Reservation "$(_G_RESULT)"
 
-	if "$(WorkVal)" NE "$(g_Reservation)"
+	if "ABC$(WorkVal)" NE "ABC$(g_Reservation)"
 		Echo Db: Original ResNo: [$(WorkVal)] - Processed ResNo: [$(g_Reservation)]
 
 Return

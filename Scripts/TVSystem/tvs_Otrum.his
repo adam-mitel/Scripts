@@ -1,11 +1,18 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.7.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Otrum using the
 ;  standard TV interface protocol.
 ;
-;    						               AU-20091113
+;                                                              AU-20091113
+;
+;  Modifications - AU - 2020-07-27 - 50.0.7.0
+;	* Modified HandleReservation to force if statements to compare strings to compare
+;	  strings instead of integers
+;
+;  Modifications - AU - 2020-05-13 - 50.0.6.0 - UNTESTED
+;	* Added support for express checkout
 ;
 ;  Modifications - AU - 2018-05-20 - 50.0.5.0
 ;	* Resolved issue sending Bill Amount totals where there is a credited item
@@ -127,6 +134,7 @@ define v_NoTV
 define v_Unrestricted
 ;
 define in_Account
+define in_Balance
 define in_BCC
 define in_Charge
 define in_Date
@@ -776,6 +784,8 @@ Exit
 		Call MSGRRECORD
 	if "<Verb:TEXT:4:LJ,SP>" EQ "MSGD"
 		Call MSGDRECORD
+	if "<Verb:TEXT:4:LJ,SP>" EQ "XCKO"
+		Call XCKORECORD
 
 	if "$(Verb)" EQ ""
 		Goto ReceiveRecord_QuitReceiving
@@ -845,6 +855,8 @@ Exit
 		Call HandleMSGRRecord
 	if "$(RecType)" EQ "MSGD"
 		Call HandleMSGDRecord
+	if "$(RecType)" EQ "XCKO"
+		Call HandleXCKORecord
 
 :ReceiveRecord_SkipProcessIncoming
 
@@ -1673,6 +1685,63 @@ Return
 
 
 ; ************************************************************************
+;  HandleXCKORecord
+;    Called to handle a XCKO record from the TV System
+:HandleXCKORecord
+
+	CreateExpressCheckout "$(in_Room)" "$(in_Account)" "$(in_Balance)"
+
+	StartWaitTimer 30
+
+:HandleXCKORecord_CheckForEvent
+
+	Sleep 100
+
+	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+		Goto HandleXCKORecord_Failure
+
+	QueryNextSpecificEvent "$(in_Room)" "21"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Goto HandleXCKORecord_GotRecord
+
+	Goto HandleXCKORecord_CheckForEvent
+
+:HandleXCKORecord_GotRecord
+
+	if "$(_QEV_XCRESPONSE)" EQ "OK"
+		Goto HandleXCKORecord_OK
+	if "$(_QEV_XCRESPONSE)" NE "OK"
+		Goto HandleXCKORecord_Failure
+
+:HandleXCKORecord_OK
+
+//	Reply with a VER
+	Assign SendRec "$(in_Transaction)9999VER <#3>"
+	GenerateBCCChar "7bit" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendReply
+
+	FlagSpecificEventIdAsProcessed "$(_QEV_ID)"
+
+	Return
+
+:HandleXCKORecord_Failure
+
+//	The Balance doesn't match so we need to reply with ERR 7
+	Assign SendRec "$(in_Transaction)9999ERR  7<#3>"
+	GenerateBCCChar "7bit" "$(SendRec)"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+
+	Call SendReply
+
+	FlagSpecificEventIdAsProcessed "$(_QEV_ID)"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
 ;  HandleVacantRoom
 ;    Called to handle a Vacant Room response
 :HandleVacantRoom
@@ -1810,7 +1879,7 @@ Return
 	if "$(f_CharPos)" GT "7"
 		Goto HandleReservation_ProcessLength
 
-	if "$(WorkVal)" NE "$(g_Reservation)"
+	if "ABC$(WorkVal)" NE "ABC$(g_Reservation)"
 		Echo Db: Original ResNo: [$(WorkVal)] - Processed ResNo: [$(g_Reservation)]
 
 	Return
@@ -1822,7 +1891,7 @@ Return
 
 	Assign g_Reservation "$(_G_RESULT)"
 
-	if "$(WorkVal)" NE "$(g_Reservation)"
+	if "ABC$(WorkVal)" NE "ABC$(g_Reservation)"
 		Echo Db: Original ResNo: [$(WorkVal)] - Processed ResNo: [$(g_Reservation)]
 
 Return
@@ -2014,6 +2083,18 @@ Return
 
 	Assign RecType "MSGD"
 	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>MSGD<in_Dummy:TEXT:6:LJ,SP><in_MsgNum:TEXT:6:RJ,SP><in_Dummy2:TEXT:12:RJ,SP><#3><in_BCC:TEXT:1:LJ,SP>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+; XCKORECORD
+;  Setup for receiving a XCKO message.
+:XCKORECORD
+
+	Assign RecType "XCKO"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2><in_Transaction:TEXT:4:LJ,SP><in_Sequence:NUMBER:4:LJ,SP>XCKO<in_Room:TEXT:6:LJ,SP><in_Account:TEXT:6:RJ,SP><in_Balance:TEXT:8:RJ,ZP><#3><in_BCC:TEXT:1:LJ,SP>"
 
 Return
 ; ************************************************************************
