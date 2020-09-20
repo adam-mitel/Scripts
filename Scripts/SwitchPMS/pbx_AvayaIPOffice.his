@@ -11,7 +11,7 @@
 ;	* Fixed COS settings so it doesn't deal with DND if it's disabled
 ;
 ;  Modifications - AU - 2017-11-23 - 50.0.5.0
-;	* Fixed COS settings so it doesn't deal with DND if it's disabled
+;	* Set Process Room Status to FALSE by default
 ;
 ;  Modifications - AU - 2017-11-23 - 50.0.4.0
 ;	* Added enhanced COS settings
