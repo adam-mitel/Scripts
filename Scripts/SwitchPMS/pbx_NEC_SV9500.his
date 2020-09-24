@@ -1,11 +1,17 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.8.0
+; Script Version: 50.0.9.0
 ; ************************************************************************
 ;
-;  This is the HI configuration script for interfacing to either an
-;  NEC SV8300 or an SV8500.
+;  This is the HI configuration script for interfacing to the following:
+;	- NEC SV8300
+;	- NEC SV9300
+;	- NEC SV8500
+;	- NEC SV9500
 ;
 ;                                                              AU-20100201
+;
+;  Modifications - AU - 2020-09-24 - 50.0.9.0
+;	* Resolved issue with incorrect dates on Wakeup Results
 ;
 ;  Modifications - AU - 2019-10-02 - 50.0.8.0
 ;	* Added support for processing DDI numbers on Room Transfers
@@ -942,7 +948,7 @@ Return
 
 	Assign RecType "WK"
 
-	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,SP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1916<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_WakeupTime:TEXT:4:LJ,SP><in_WakeupResult:TEXT:1:LJ,ZP><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,SP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1916<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_WakeupTime:TIME:4:HHMM><in_WakeupResult:TEXT:1:LJ,ZP><#3>"
 
 Return
 ; ************************************************************************
@@ -1053,7 +1059,7 @@ Return
 
 :HW_Set
 
-	Echo If: Wakeup Set for $(in_WakeupTime) on Extension $(in_Extn).
+	Echo If: Wakeup Set for <in_WakeupTime:TIME:5:HH:MM> on Extension $(in_Extn).
 	CreateSetWakeup "$(in_Extn)" "" "<in_WakeupTime:TIME:4:HHMM>"
 
 Goto HW_Done
@@ -1067,25 +1073,39 @@ Goto HW_Done
 
 :HW_Result
 
+	; ttRC_Set = 0
+	; ttRC_Cleared = 1
+	; ttRC_ClearAll = 2
+	; ttRC_Attempt = 3
+	; ttRC_Answered = 4
+	; ttRC_Unanswered = 5
+	; ttRC_Snoozed = 6
+	; ttRC_Busy = 7
+	; ttRC_Unobtainable = 8
+	; ttRC_Abandoned = 9
+	; ttRC_Invalid = 10
+	; ttRC_Error = 11
+	; ttRC_NA = 12
+
 	if "$(in_WakeupResult)" EQ "1"
-		Echo If: Wakeup call for $(in_WakeupTime) on Extension $(in_Extn) was answered.
+		Echo If: Wakeup call for <in_WakeupTime:TIME:5:HH:MM> on Extension $(in_Extn) was answered.
 	if "$(in_WakeupResult)" EQ "1"
-		CreateWakeupDelivered "$(in_Extn)" "" "" "<in_WakeupTime:TIME:4:HHMM>"
+		CreateWakeupDelivered "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WakeupTime:TIME:4:HHMM>" "4"
 
 	if "$(in_WakeupResult)" EQ "2"
-		Echo If: Wakeup call for $(in_WakeupTime) on Extension $(in_Extn) failed because the line was busy.
+		Echo If: Wakeup call for <in_WakeupTime:TIME:5:HH:MM> on Extension $(in_Extn) failed because the line was busy.
 	if "$(in_WakeupResult)" EQ "2"
-		CreateWakeupFailed "$(in_Extn)" "" "" "<in_WakeupTime:TIME:4:HHMM>"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WakeupTime:TIME:4:HHMM>" "7"
 
 	if "$(in_WakeupResult)" EQ "3"
-		Echo If: Wakeup call for $(in_WakeupTime) on Extension $(in_Extn) failed because there was no answer.
+		Echo If: Wakeup call for <in_WakeupTime:TIME:5:HH:MM> on Extension $(in_Extn) failed because there was no answer.
 	if "$(in_WakeupResult)" EQ "3"
-		CreateWakeupFailed "$(in_Extn)" "" "" "<in_WakeupTime:TIME:4:HHMM>"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WakeupTime:TIME:4:HHMM>" "5"
 
 	if "$(in_WakeupResult)" EQ "4"
-		Echo If: Wakeup call for $(in_WakeupTime) on Extension $(in_Extn) failed because it was blocked.
+		Echo If: Wakeup call for <in_WakeupTime:TIME:5:HH:MM> on Extension $(in_Extn) failed because it was blocked.
 	if "$(in_WakeupResult)" EQ "4"
-		CreateWakeupFailed "$(in_Extn)" "" "" "<in_WakeupTime:TIME:4:HHMM>"
+		CreateWakeupFailed "$(in_Extn)" "" "<_G_NOW:DATE:8:YYYYMMDD>" "<in_WakeupTime:TIME:4:HHMM>" "8"
 
 :HW_Done
 
