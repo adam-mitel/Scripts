@@ -1,11 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.7.0
+; Script Version: 50.0.8.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel SX-200
 ;  telephone exchange.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2021-01-08 - 50.0.8.0
+;	* Removed CHK0 from Checkin commands so we send less messages to the Mitel
+;	* Improved VIP codes
 ;
 ;  Modifications - AU - 05/10/2017 - 50.0.7.0
 ;	* Removed CHK0 from Checkin commands so we send less messages to the Mitel
@@ -278,7 +282,7 @@ goto IgnoreRecord
 	if "$(_EV_MWSTATE)" EQ "TRUE"
 		Assign WorkVal "1"
 
-	Assign SendRec "<#02>MW $(WorkVal) <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>MW $(WorkVal) <_EV_EXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 Goto HandleOKAndExit
@@ -303,14 +307,14 @@ Goto HandleOKAndExit
 	if "$(_EV_WKACTION)" NE "SET"
 		Goto WK_Clear
   
-	Assign SendRec "<#02>WKP<_EV_WKTIME:TIME:4:HHMM><_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>WKP<_EV_WKTIME:TIME:4:HHMM><_EV_EXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 	Goto HandleOKAndExit
 
 :WK_Clear
 
-	Assign SendRec "<#02>WKP    <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>WKP    <_EV_EXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 Goto HandleOKAndExit
@@ -478,7 +482,7 @@ goto IgnoreRecord
 	if "$(_EV_EXTNNUMBER)" EQ ""
 		Goto RT_SkipCheckout
 
-	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 :RT_SkipCheckout
@@ -491,18 +495,18 @@ goto IgnoreRecord
 	if "$(s_UseRST)" EQ "YES"
 		Goto TR_RST
 
-	Assign SendRec "<#02>CHK0 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>CHK0 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
-		Assign SendRec "<#02>CHK1 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+		Assign SendRec "<#02>CHK1 <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
 		Call SendRecord
 
 	if "$(s_DoNames)" NE "YES"
 		Goto HandleOKAndExit
 
-	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	Assign SendRec "<#02>NAM2 <_EV_NAMEDISPLAY:TEXT:$(NameLen):LJ,SP,AN> <_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLen):RJ,SP><#03>"
 	Call SendRecord
 
 	if "$(s_DoVIP)" NE "YES"
