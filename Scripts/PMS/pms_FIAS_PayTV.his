@@ -1,11 +1,20 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.24.0
+; Script Version: 50.0.27.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Pay TV / Extended Video Serices interface.
 ;
 ;							       AU-20150211
+;
+;  Modifications - AU - 2021-01-17 - 50.0.27.0
+;	* Modified default s_HowLongToWait setting from 30 to 60 seconds
+;
+;  Modifications - AU - 2019-10-02 - 50.0.26.0
+;	* Modified Database Swap to always checkin the first room with GSY
+;
+;  Modifications - AU - 2019-06-24 - 50.0.25.0
+;	* Modified HandleXI to allow for no department code from PMS
 ;
 ;  Modifications - AU - 2018-05-20 - 50.0.24.0
 ;	* Modified BillBalance and BillItem to strip decimals and commas to prevent crashes
@@ -47,6 +56,7 @@
 ;	* Resolved issue where we sometimes wouldn't return to check if the LA has arrived
 ;	* Added a second delay between seding the Link Records and the Link Alive
 ;	* Switched from WaitTimer to WaitTimer4 in PeriodicCheck
+;
 ;  Modifications - AU - 2016-03-16 - 50.0.14.0
 ;	* Added option s_AutoCOS to automatically create COS evens on Checkin and Checkout
 ;	  regardless of what we receive. Useful for when we do not receive CS or NP values
@@ -150,6 +160,7 @@ define f_GotPostAnswer
 define f_GotCheckoutConfirm
 define f_GotSwapEnd
 define f_MessageHandled
+define f_LastRoom
 ;
 define s_CombinedServicesImplimented
 define s_Connection
@@ -262,7 +273,7 @@ Assign s_RespondToLA "FALSE"
 Assign s_Heartbeat "LS"
 
 // OPT: Specify how long we should wait for responses to our records
-Assign s_HowLongToWait 30
+Assign s_HowLongToWait 60
 
 // OPT: Specify whether Combined Services are Implemented at this site
 Assign s_CombinedServicesImplimented "FALSE"
@@ -337,6 +348,7 @@ Assign f_GotBalance "FALSE"
 Assign f_GotPostAnswer "FALSE"
 Assign f_GotCheckoutConfirm "FALSE"
 Assign f_GotSwapEnd "FALSE"
+Assign f_LastRoom ""
 
 StartWaitTimer 5
 
@@ -1985,7 +1997,13 @@ Return
 	if "$(in_GuestShare)" EQ "Y"
 		Goto HandleGI_GuestShare
 
+:HandleGI_ProcessEvent
+
 	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_SwapFlag)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestID)" "$(in_GuestGroup)" "$(in_Credential)"
+
+//	If it was a swap store the last room to check against later for GSY swap records
+	if "$(in_SwapFlag)" EQ "TRUE"
+		Assign f_LastRoom "$(in_Room)"
 
 	if "$(s_AutoCOS)" EQ "TRUE"
 		CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "TRUE" "TRUE" "TRUE" ""
@@ -2023,6 +2041,9 @@ Return
 Return
 
 :HandleGI_GuestShare
+
+	if "$(in_SwapFlag)" EQ "TRUE"
+		Call HandleGI_CheckSwapLastRoom
 
 	if "$(s_ExtraGuest)" NE "TRUE"
 		Return
@@ -2077,6 +2098,14 @@ Return
 	Assign Body ""
 	Assign WorkVal ""
 	Assign WorkTmp ""
+
+Return
+
+:HandleGI_CheckSwapLastRoom
+
+//	We want to process the first GSY in a Database Swap, but not any subsequent records
+	if "$(f_LastRoom)" NE "$(in_Room)"
+		Goto HandleGI_ProcessEvent
 
 Return
 ; ************************************************************************
@@ -2376,6 +2405,8 @@ Return
 	if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
 		Goto InvalidDateTime
 
+	if "$(in_BillDeptCode)" EQ ""
+		Assign in_BillDeptCode "1"
 	if $(in_BillDeptCode) GT 999999999
 		Assign in_BillDeptCode "1"
 
@@ -2685,6 +2716,9 @@ Return
 		Assign f_LinkAlive "TRUE"
 	if "$(in_Room)" NE ""	
 		Assign f_SentLinkRecords "TRUE"
+
+//	Clear the f_LastRoom variable
+	Assign f_LastRoom ""
 
 	if "$(_EV_ROOMNUMBER)" NE ""
 		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "Start"

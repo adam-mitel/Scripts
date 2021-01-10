@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.27.0
+; Script Version: 50.0.28.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2021-01-17 - 50.0.28.0
+;	* Modified default s_HowLongToWait setting from 30 to 60 seconds
 ;
 ;  Modifications - AU - 2020-02-11 - 50.0.27.0
 ;	* Added CS request and handler to GC record
@@ -269,7 +272,7 @@ Assign s_RespondToLA "FALSE"
 Assign s_Heartbeat "LS"
 
 // OPT: Specify how long we should wait for responses to our records
-Assign s_HowLongToWait 30
+Assign s_HowLongToWait 60
 
 // OPT: Specify whether Combined Services are Implemented at this site
 Assign s_CombinedServicesImplimented "FALSE"
