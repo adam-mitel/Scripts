@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.6.0
+; Script Version: 50.0.7.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to our
 ;  AvayaIPOfficeClientService
 ;
 ;                                                              AU-20120510
+;
+;  Modifications - AU - 2021-01-20 - 50.0.7.0
+;	* Fixed spelling mistake causing problems when DND was enabled
 ;
 ;  Modifications - AU - 2020-08-03 - 50.0.6.0
 ;	* Fixed COS settings so it doesn't deal with DND if it's disabled
@@ -291,7 +294,7 @@ Goto HandleOKAndExit
 	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
 		Assign WorkVal "$(s_CS2COS)"
 	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
-		Assign WorkVal "$(s_UnarCOS)"
+		Assign WorkVal "$(s_UnbarCOS)"
 
 	Goto ClassOfService_Send
 
@@ -304,7 +307,7 @@ Goto HandleOKAndExit
 	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
 		Assign WorkVal "$(s_DNDCS2COS)"
 	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
-		Assign WorkVal "$(s_DNDUnarCOS)"
+		Assign WorkVal "$(s_DNDUnbarCOS)"
 
 	Goto ClassOfService_Send
 
@@ -437,7 +440,7 @@ Goto IgnoreRecord
 	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
 		Assign WorkVal "$(s_CS2COS)"
 	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
-		Assign WorkVal "$(s_UnarCOS)"
+		Assign WorkVal "$(s_UnbarCOS)"
 
 	Goto RoomTransfer_Send
 
@@ -450,7 +453,7 @@ Goto IgnoreRecord
 	if "$(_EV_TRCOVERAGEPATH)" EQ "2"
 		Assign WorkVal "$(s_DNDCS2COS)"
 	if "$(_EV_TRCOVERAGEPATH)" EQ "3"
-		Assign WorkVal "$(s_DNDUnarCOS)"
+		Assign WorkVal "$(s_DNDUnbarCOS)"
 
 	Goto RoomTransfer_Send
 
