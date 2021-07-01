@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;  This is the HI configuration script for interfacing to an LDK 300
 ;  exchange.
@@ -15,6 +15,9 @@
 ;
 ;  Created:                                                    pjh-140102
 ;  Updated:                                                    pjh-210102
+;
+;  Modifications - AU - 2021-07-01 - 50.0.4.0
+;	* Updated to support ERR from PBX
 ;
 ;  Modifications - AU - 2020-09-10 - 50.0.3.0
 ;	* Updated to support ACK and NAK from PBX
@@ -598,6 +601,12 @@ goto TakeWhatsComing_Read
 	ContainsStr "<#36>NAK" "<ReceivedRec:TEXT:255:UC>" "FALSE"
 	if "$(_G_RESULT)" EQ "TRUE"
 		Echo If: Got NAK - Already processed. Move on.
+	if "$(_G_RESULT)" EQ "TRUE"
+		Return
+
+	ContainsStr "<#36>ERR" "<ReceivedRec:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo If: Got ERR - Already processed. Move on.
 	if "$(_G_RESULT)" EQ "TRUE"
 		Return
 
