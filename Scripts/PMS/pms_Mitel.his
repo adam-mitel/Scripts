@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.6.0
+; Script Version: 50.0.7.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for emulating a Mitel Interface.
@@ -7,6 +7,9 @@
 ;  Note: This interface does not support Reservation Numbers
 ;
 ;                                                             AU-20120820
+;
+;  Modifications - AU - 2021-08-26 - 50.0.7.0
+;	* Added option s_CheckinOnNAM to create Checkin events on NAM instead of CHK1
 ;
 ;  Modifications - AU - 2017-03-21 - 50.0.6.0
 ;	* Resolved issue reading some incoming records
@@ -41,6 +44,7 @@ define WorkTmp
 define f_FormatAssigned
 ;
 define s_ExtnJustify
+define s_CheckinOnNAM
 ;
 define in_Extension
 define in_Name
@@ -54,6 +58,10 @@ define in_Status
 //	Set whether we will send extensions justified to the left or right
 //	"LJ" and "RJ" are the only valid settings
 	Assign s_ExtnJustify "LJ"
+
+//	Set the below setting to "TRUE" if we need to ignore CHK1 messages
+//	and create a checkin event on NAM messages only
+	Assign s_CheckinOnNAM "FALSE"
 
 //	Uncomment the next line if this is a serial connection
 	;OpenPort
@@ -581,6 +589,10 @@ Return
 
 	if "$(in_Status)" EQ "0"
 		CreateCheckout "$(in_Extension)"
+
+	if "$(s_CheckinOnNAM)" EQ "TRUE"
+		Return
+
 	if "$(in_Status)" EQ "1"
 		CreateCheckin "$(in_Extension)" "" "" "" "$(in_Name)"
 
@@ -609,10 +621,10 @@ Return
 	if "$(in_Name)" EQ ""
 		Return
 
-	if "$(in_Status)" EQ "1"
+	if "$(s_CheckinOnNAM)" NE "TRUE"
 		CreateRoomUpdate "$(in_Extension)" "" "" "$(in_Name)"
-	if "$(in_Status)" EQ "2"
-		CreateRoomUpdate "$(in_Extension)" "" "" "$(in_Name)"
+	if "$(s_CheckinOnNAM)" EQ "TRUE"
+		CreateCheckin "$(in_Extension)" "" "" "" "$(in_Name)"
 
 Return
 
