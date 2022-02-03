@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.2.0
+; Script Version: 50.0.3.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to the
 ;  NEC UM4730 or UM8000 when the Voicemail system is using the
 ;  PMS_Micros-Opera-FIAS2-(IP).ini configuration file.
+;
+;  Modifications - AU - 2022-02-03 - 50.0.3.0
+;	* Merged changes from LMR to change the format of Checkn and Move messages
 ;
 ;  Modifications - AU - 2019-10-06 - 50.0.2.0
 ;	* Resolved issue with Checkout using Room Number instead of Extension
@@ -487,7 +490,7 @@ Goto IgnoreRecord
 	if "$(s_ExtensionFacilities)" EQ "YES"
 		Call ExtensionFacilities
 
-	Assign SendRec "GC|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|GG$(_EV_RUGUESTGROUP)|RN$(_EV_EXTNNUMBER)|GSN|<#3>"
+	Assign SendRec "GC|RN$(_EV_EXTNNUMBER)|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|GG$(_EV_RUGUESTGROUP)|GSN|<#3>"
 	Call HandleLRC
 
 	Call SendRecord
@@ -518,7 +521,7 @@ Goto IgnoreRecord
 	if "$(s_ExtensionFacilities)" EQ "YES"
 		Call ExtensionFacilities_Dest
 
-	Assign SendRec "GC|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|GG$(_EV_TRGUESTGROUP)|RN$(_EV_TRDESTEXTNNUMBER)|GSN|RO$(_EV_EXTNNUMBER)|GSN|<#3>"
+	Assign SendRec "GM|RO$(_EV_EXTNNUMBER)|RN$(_EV_TRDESTEXTNNUMBER)|GN$(_EV_NAMEDISPLAY)|GL$(_EV_LANGCODE)|<#3>"
 	Call HandleLRC
 
 	Call SendRecord
@@ -1391,8 +1394,8 @@ Return
 ;   This label is called when we have received a Database Swap Request (DR)
 :HandleDR
 
-	if "$(_EV_ROOMNUMBER)" NE ""
-		CreateGenericPassThrough "$(_EV_ROOMNUMBER)" "DatabaseSwap" "Request"
+	if "$(_EV_EXTNNUMBER)" NE ""
+		CreateGenericPassThrough "$(_EV_EXTNNUMBER)" "DatabaseSwap" "Request"
 	if "$(_EV_ROOMNUMBER)" EQ ""
 		CreateGenericPassThrough "FFFF" "DatabaseSwap" "Request"
 
