@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an Alcatel
@@ -7,6 +7,11 @@
 ;  OLD (Office Link Driver) on the TigerTMS PC and then we connect to it
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2022-02-02 - 50.0.4.0
+;	* Removed N records to only send M records
+;	* Removed JustSendRecord so we will always wait for a reply for every record
+;	* Updated failure messages from PBX from AHL codes to OHL codes
 ;
 ;  Modifications - AU - 2020-01-30 - 50.0.3.0
 ;	* Complete rewrite based on the AHL script and OHL API R2.3.12
@@ -203,13 +208,16 @@ Goto IgnoreRecord
 		Assign WorkVal "<_EV_WKTIME:TIME:4:HHMM> "
 
 	Assign g_Password ""
-
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
-	if "$(s_PasswordLength)" EQ "4"
-		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
+	Assign f_Extn "$(_EV_EXTNNUMBER)"
+	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>            $(WorkVal) "
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "M"
+	Assign f_ReplyType2 "N"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -228,11 +236,15 @@ Goto HandleOKAndExit
 	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "O"
+	Assign f_ReplyType2 "P"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
 
 	Sleep 1000
 
 	Assign g_Password "987654"
+	Assign f_Extn "$(_EV_EXTNNUMBER)"
 
 	Assign g_LangCode "$(_EV_LANGCODE)"
 	if  "$(_EV_LANGCODE)" EQ ""
@@ -272,7 +284,12 @@ Goto HandleOKAndExit
 	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "O"
+	Assign f_ReplyType2 "P"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -292,6 +309,7 @@ Goto HandleOKAndExit
 		Call HandleSuiteMode
 
 	Assign g_Password ""
+	Assign f_Extn "$(_EV_EXTNNUMBER)"
 
 	Assign WorkVal "$(s_CloseDOD)"
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
@@ -307,12 +325,15 @@ Goto HandleOKAndExit
 	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
 		Assign WorkVal "$(s_OpenDOD)"
 
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
-	if "$(s_PasswordLength)" EQ "4"
-		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
+	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "M"
+	Assign f_ReplyType2 "N"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -324,14 +345,11 @@ Goto HandleOKAndExit
 ;   event to send.
 :RoomUpdate
 
-	QueryRoomOccupied "$(_EV_EXTNNUMBER)"
-	if "$(_G_RESULT)" NE "TRUE"
-		Goto IgnoreRecord
-
 	if "$(s_SuiteMode)" EQ "TRUE"
 		Call HandleSuiteMode
 
 	Assign g_Password ""
+	Assign f_Extn "$(_EV_EXTNNUMBER)"
 
 	Assign g_LangCode "$(_EV_LANGCODE)"
 	if  "$(_EV_LANGCODE)" EQ ""
@@ -341,12 +359,15 @@ Goto HandleOKAndExit
 	if  $(_EV_LANGCODE) GT 4
 		Assign g_LangCode "1"
 
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                  "
-	if "$(s_PasswordLength)" EQ "4"
-		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                  "
+	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                  "
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "M"
+	Assign f_ReplyType2 "N"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -378,7 +399,12 @@ Goto HandleOKAndExit
 	Assign SendRec "D<_EV_EXTNNUMBER:TEXT:8:RJ,SP>"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "O"
+	Assign f_ReplyType2 "P"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 :RoomTransfer_SkipCheckout
 
@@ -389,6 +415,7 @@ Goto HandleOKAndExit
 		Call HandleSuiteMode_Destination
 
 	Assign g_Password "987654"
+	Assign f_Extn "$(_EV_TRDESTEXTNNUMBER)"
 
 	Assign g_LangCode "$(_EV_LANGCODE)"
 	if  "$(_EV_LANGCODE)" EQ ""
@@ -416,7 +443,12 @@ Goto HandleOKAndExit
 	Assign SendRec "D<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP>"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "O"
+	Assign f_ReplyType2 "P"
+	Assign f_ReplyExtn "$(_EV_TRDESTEXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 //	Check in the Destination Extension
 	Assign SendRec "B<_EV_TRDESTEXTNNUMBER:TEXT:8:RJ,SP> <_EV_GUESTNAME:TEXT:10:UC,AN,LJ,SP>          <g_LangCode:NUMBER:1:ZP>    <g_Password:TEXT:$(s_PasswordLength):RJ,SP><WorkVal:TEXT:2:RJ,ZP>                "
@@ -469,12 +501,15 @@ Goto IgnoreRecord
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
 		Assign WorkVal "2"
 
-	Assign SendRec "N<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                 $(WorkVal)"
-	if "$(s_PasswordLength)" EQ "4"
-		Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                 $(WorkVal)"
+	Assign SendRec "M<_EV_EXTNNUMBER:TEXT:8:RJ,SP> 0000000000          0    <g_Password:TEXT:$(s_PasswordLength):RJ,SP>                 $(WorkVal)"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "M"
+	Assign f_ReplyType2 "N"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
+
+	Sleep 1000
 
 Goto HandleOKAndExit
 ; ************************************************************************
@@ -719,63 +754,6 @@ Goto ReceiveRecord_ReadNextChar
 		Return
 
 Exit
-; ************************************************************************
-
-
-; ************************************************************************
-;  JustSendRecord
-;   This label is called when we have a record that we need to send to the
-;   client when we do not need a response.
-:JustSendRecord
-
-	Assign f_ReplyExtn "0"
-	Assign f_ReplyType1 "0"
-	Assign f_ReplyType2 "0"
-
-	Assign f_SendLabel "JustSendRecord"
-	Assign f_Sending "TRUE"
-
-	Send $(SendRec)
-	Echo Tx: $(SendRec)
-
-	StartWaitTimer 25
-
-:JustSendRecord_WaitForACK
-
-	Sleep 10
-
-	ReadFromPort 1 1
-
-	if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
-		Goto SendError
-
-	if "$(_PORTCHARS)" EQ ""
-		Goto JustSendRecord_WaitForACK
-
-	if "$(_PORTCHARS)" EQ "<#6>"
-		Echo Rx: <#6>
-	if "$(_PORTCHARS)" EQ "<#6>"
-		Goto JustSendRecord_GotACK
-
-	if "$(_PORTCHARS)" EQ "<#21>"
-		Echo Rx: <#21>
-	if "$(_PORTCHARS)" EQ "<#21>"
-		Sleep 3000
-	if "$(_PORTCHARS)" EQ "<#21>"
-		Goto JustSendRecord
-
-	if "$(_PORTCHARS)" EQ "<#2>"
-		Assign ReceivedRec "<#2>"
-	if "$(_PORTCHARS)" EQ "<#2>"
-		Call ReceiveRecord
-
-	Goto JustSendRecord_WaitForACK
-
-:JustSendRecord_GotACK
-
-	Assign f_Sending "FALSE"
-
-Return
 ; ************************************************************************
 
 
@@ -1080,20 +1058,29 @@ Return
 	if "$(in_Action)" EQ "J"
 		Goto HandleRRecord_RefusedCheckin
 
+	if "$(in_Action)" EQ "O"
+		Echo If: Checkout completed for $(in_Extn).
+
+	if "$(in_Action)" EQ "P"
+		Goto HandleRRecord_RefusedCheckout
+
+	if "$(in_Action)" EQ "M"
+		Echo If: Modification completed for $(in_Extn).
+
+	if "$(in_Action)" EQ "N"
+		Goto HandleRRecord_RefusedModification
+
 	if "$(in_Action)" EQ "A"
 		Goto HandleRRecord_AcceptedAllocation
 
 	if "$(in_Action)" EQ "B"
 		Goto HandleRRecord_RefusedAllocation
 
-	if "$(in_Action)" EQ "N"
-		Goto HandleRRecord_RefusedModification
+	if "$(in_Action)" EQ "R"
+		Echo If: Interrogation refused.
 
-	if "$(in_Action)" EQ "W"
-		Goto HandleRRecord_RefusedAttribution
-
-	if "$(in_Action)" EQ "P"
-		Goto HandleRRecord_RefusedCheckout
+	if "$(in_Action)" EQ "T"
+		Echo If: Re-initiasation refused.
 
 	Return
 
@@ -1109,84 +1096,6 @@ Return
 
 	Return
 
-:HandleRRecord_AcceptedAllocation
-
-	if "$(in_Reason)" EQ "O"
-		Echo Er: PBX responded - Guest extn out of order.
-	if "$(in_Reason)" NE "O"
-		Echo If: Allocation completed for GPIN $(in_Extn) to Extension $(_EV_EXTNNUMBER).
-
-	Return
-
-:HandleRRecord_RefusedAllocation
-
-	if "$(in_Reason)" EQ "O"
-		Echo Er: PBX responded - Guest extn out of order.
-
-	if "$(in_Reason)" EQ "G"
-		Echo Er: PBX responded - Invalid GPIN.
-
-	if "$(in_Reason)" EQ "R"
-		Echo Er: PBX responded - Invalid extn number.
-
-	if "$(in_Reason)" EQ "U"
-		Echo Er: PBX responded - Unavailable extn number - Under repair.
-
-	if "$(in_Reason)" EQ "Q"
-		Echo Er: PBX responded - Database unreachable.
-
-	Return
-
-:HandleRRecord_RefusedCheckout
-
-	if "$(in_Reason)" EQ "G"
-		Echo Er: PBX responded - Invalid GPIN.
-
-	if "$(in_Reason)" EQ "L"
-		Echo Er: PBX responded - Line in use.
-
-	if "$(in_Reason)" EQ "M"
-		Echo Er: PBX responded - Mailbox has messages.
-
-	Return
-
-:HandleRRecord_RefusedAttribution	
-
-	if "$(in_Reason)" EQ "G"
-		Echo Er: PBX responded - Invalid GPIN.
-
-	if "$(in_Reason)" EQ "A"
-		Echo Er: PBX responded - Unavailable guest number - Not checked in.
-
-	if "$(in_Reason)" EQ "W"
-		Echo Er: PBX responded - Mailbox in use.
-
-	if "$(in_Reason)" EQ "V"
-		Echo Er: PBX responded - Voicemail unavailable.
-
-	if "$(in_Reason)" EQ "M"
-		Echo Er: PBX responded - Not consulted messages.
-
-	if "$(in_Reason)" EQ "Y"
-		Echo Er: PBX responded - Out of mailbox number range.
-
-	if "$(in_Reason)" EQ "Z"
-		Echo Er: PBX responded - Mailbox already exists.
-
-	if "$(in_Reason)" EQ "J"
-		Echo Er: PBX responded - Feature not available.
-
-	if "$(in_Reason)" EQ "J"
-		Echo Er: PBX responded - Wrong message.
-
-	if "$(in_Reason)" EQ "J"
-		Echo Er: PBX responded - Other.
-
-	if "$(in_Reason)" EQ "Q"
-		Echo Er: PBX responded - Database unreachable.
-
-	Return
-
 :HandleRRecord_RefusedCheckin
 
 	if "$(in_Reason)" EQ "A"
@@ -1195,17 +1104,63 @@ Return
 	if "$(in_Reason)" EQ "G"
 		Echo Er: PBX responded - Invalid number.
 
-	if "$(in_Reason)" EQ "E"
-		Echo Er: PBX responded - Empty GPIN Database - No GPINs Available.
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Out of service.
 
-	if "$(in_Reason)" EQ "N"
-		Echo Er: PBX responded - Name too short.
+	if "$(in_Reason)" EQ "R"
+		Echo Er: PBX responded - Invalid room extension number.
 
-	if "$(in_Reason)" EQ "X"
-		Echo Er: PBX responded - Phonebook capacity exceeded.
+	if "$(in_Reason)" EQ "U"
+		Echo Er: PBX responded - Unavailable room extension number.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Not consulted voice message.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Not available feature.
+
+	if "$(in_Reason)" EQ "K"
+		Echo Er: PBX responded - Wrong message.
 
 	if "$(in_Reason)" EQ "Q"
 		Echo Er: PBX responded - Database unreachable.
+
+	if "$(in_Reason)" EQ "T"
+		Echo Er: PBX responded - Other error.
+
+	Return
+
+:HandleRRecord_RefusedCheckout
+
+	if "$(in_Reason)" EQ "A"
+		Echo If: PBX responded - Already checked out.
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid number.
+
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Out of service.
+
+	if "$(in_Reason)" EQ "R"
+		Echo Er: PBX responded - Invalid room extension number.
+
+	if "$(in_Reason)" EQ "U"
+		Echo Er: PBX responded - Unavailable room extension number.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Not consulted voice message.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Not available feature.
+
+	if "$(in_Reason)" EQ "K"
+		Echo Er: PBX responded - Wrong message.
+
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	if "$(in_Reason)" EQ "T"
+		Echo Er: PBX responded - Other error.
 
 	Return
 
@@ -1217,14 +1172,69 @@ Return
 	if "$(in_Reason)" EQ "G"
 		Echo Er: PBX responded - Invalid number.
 
-	if "$(in_Reason)" EQ "P"
-		Echo Er: PBX responded - Password is not available.
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Out of service.
 
-	if "$(in_Reason)" EQ "N"
-		Echo Er: PBX responded - Name too short.
-		
+	if "$(in_Reason)" EQ "R"
+		Echo Er: PBX responded - Invalid room extension number.
+
+	if "$(in_Reason)" EQ "U"
+		Echo Er: PBX responded - Unavailable room extension number.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Not consulted voice message.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Not available feature.
+
+	if "$(in_Reason)" EQ "K"
+		Echo Er: PBX responded - Wrong message.
+
 	if "$(in_Reason)" EQ "Q"
 		Echo Er: PBX responded - Database unreachable.
+
+	if "$(in_Reason)" EQ "T"
+		Echo Er: PBX responded - Other error.
+
+	Return
+
+:HandleRRecord_AcceptedAllocation
+
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Guest extn out of order.
+	if "$(in_Reason)" NE "O"
+		Echo If: Allocation completed for GPIN $(in_Extn) to Extension $(_EV_EXTNNUMBER).
+
+	Return
+
+:HandleRRecord_RefusedAllocation
+
+	if "$(in_Reason)" EQ "G"
+		Echo Er: PBX responded - Invalid number.
+
+	if "$(in_Reason)" EQ "O"
+		Echo Er: PBX responded - Out of service.
+
+	if "$(in_Reason)" EQ "R"
+		Echo Er: PBX responded - Invalid room extension number.
+
+	if "$(in_Reason)" EQ "U"
+		Echo Er: PBX responded - Unavailable room extension number.
+
+	if "$(in_Reason)" EQ "M"
+		Echo Er: PBX responded - Not consulted voice message.
+
+	if "$(in_Reason)" EQ "J"
+		Echo Er: PBX responded - Not available feature.
+
+	if "$(in_Reason)" EQ "K"
+		Echo Er: PBX responded - Wrong message.
+
+	if "$(in_Reason)" EQ "Q"
+		Echo Er: PBX responded - Database unreachable.
+
+	if "$(in_Reason)" EQ "T"
+		Echo Er: PBX responded - Other error.
 
 	Return
 
@@ -1239,7 +1249,10 @@ Return
 	Assign SendRec "D<f_Extn:TEXT:8:RJ,SP>"
 	GenerateBCCChar "HEXString" "$(SendRec)"
 	Assign SendRec "<#2>$(SendRec)$(_G_BCC)<#3>"
-	Call JustSendRecord
+	Assign f_ReplyType1 "O"
+	Assign f_ReplyType2 "P"
+	Assign f_ReplyExtn "$(_EV_EXTNNUMBER)"
+	Call SendRecord
 
 	Sleep 1000
 
