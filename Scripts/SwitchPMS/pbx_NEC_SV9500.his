@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.9.0
+; Script Version: 50.0.10.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to the following:
@@ -9,6 +9,9 @@
 ;	- NEC SV9500
 ;
 ;                                                              AU-20100201
+;
+;  Modifications - AU - 2022-02-16 - 50.0.10.0
+;	* Added support for Maid Status Answer Back record type 51
 ;
 ;  Modifications - AU - 2020-09-24 - 50.0.9.0
 ;	* Resolved issue with incorrect dates on Wakeup Results
@@ -835,6 +838,8 @@ Exit
 		Call MAIDSTATUS_PREDEFINED
 	if "$(in_FeatureCode)" EQ "19"
 		Call WAKEUP_RECORD
+	if "$(in_FeatureCode)" EQ "51"
+		Call MAIDSTATUS_ANSWERBACK
 	if "$(in_FeatureCode)" EQ "53"
 		Call MW_RECORD
 	if "$(in_FeatureCode)" EQ "59"
@@ -923,6 +928,19 @@ Return
 	Assign RecType "RS"
 
 	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,SP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L1217<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_MaidID:TEXT:2:LJ,SP><#3>"
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  MAIDSTATUS_ANSWERBACK
+;   Set up for receiving a Maid Status event originating from a guest
+;   room.
+:MAIDSTATUS_ANSWERBACK
+
+	Assign RecType "RS"
+	AssignAsIs _G_IN_RECORDFORMAT "<in_TextID:TEXT:1:LJ,SP><in_EquipNo:TEXT:1:RJ,ZP><in_SeqNo:TEXT:3:RJ,ZP><#2>1!L5123<in_Status:TEXT:1:LJ,SP><in_Extn:TEXT:6:LJ,SP><in_MaidID:TEXT:6:LJ,SP><in_LineEquipNo:TEXT:6:LJ,SP><#3>"
 
 Return
 ; ************************************************************************
@@ -1019,8 +1037,23 @@ Return
 		CreateRoomStatus "$(in_Extn)" "$(in_Status)"
 
 //	Echo if it's blank
-	if "$(inStatus)" EQ ""
+	if "$(in_Status)" EQ ""
 		Echo Er: Skipping Room Status with invalid character
+
+//	If this isn't feature code 51 we do not need to reply so return
+	if "$(in_FeatureCode)" NE "51"
+		Return
+
+//	It's feature code 51 so we need to send a reply to accept the Room Status change
+
+//	Build the Base Record
+	Assign SendRec "<#2>1!L51209<in_Extn:TEXT:6:LJ,SP><in_LineEquipNo:TEXT:6:LJ,SP>000<#3>"
+
+//	Build the Complete Record
+	GetNextAutoIncNumber SeqNo
+	Assign SendRec "1$(EquipNo)<_G_RESULT:TEXT:3:RJ,ZP>$(SendRec)"
+
+	Call SendRecord
 
 Return
 ; ************************************************************************
