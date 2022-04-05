@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.28.0
+; Script Version: 50.0.29.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2022-04-05 - 50.0.29.0
+;	* Added CS handler to partial share room transfers
 ;
 ;  Modifications - AU - 2021-01-17 - 50.0.28.0
 ;	* Modified default s_HowLongToWait setting from 30 to 60 seconds
@@ -2272,6 +2275,17 @@ Return
 
 	CreateCheckout "$(in_SrcRoom)"
 
+	if "$(in_COS)" EQ ""
+		Goto HandleGC_GuestShareTransferCOSrc_SkipCOS
+
+	Assign WorkVal "FALSE"
+	if "$(in_COS)" EQ "3"
+		Assign WorkVal "TRUE"
+
+	CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "$(WorkVal)" "TRUE" "TRUE" "$(in_COS)"
+
+:HandleGC_GuestShareTransferCOSrc_SkipCOS
+
 	if "$(s_ExtraGuest)" NE "TRUE"
 		Return
 
@@ -2284,6 +2298,17 @@ Return
 //	The Dest is not a share but the Source room is
 
 	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_SwapFlag)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestID)" "$(in_GuestGroup)"
+
+	if "$(in_COS)" EQ ""
+		Goto HandleGC_GuestShareTransferCIDest_SkipCOS
+
+	Assign WorkVal "FALSE"
+	if "$(in_COS)" EQ "3"
+		Assign WorkVal "TRUE"
+
+	CreateCOS "$(in_Room)" "$(in_Reservation)" "TRUE" "$(WorkVal)" "TRUE" "TRUE" "$(in_COS)"
+
+:HandleGC_GuestShareTransferCIDest_SkipCOS
 
 	if "$(s_ExtraGuest)" NE "TRUE"
 		Return
