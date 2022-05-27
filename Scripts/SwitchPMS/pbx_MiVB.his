@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.14.0
+; Script Version: 50.0.15.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2022-04-26 - 50.0.15.0 - PROVISIONAL
+;	* Added support for MaidID on STS messages
 ;
 ;  Modifications - AU - 2020-04-08 - 50.0.14.0
 ;	* Added option for Local and National COS (Coverage Paths 1 and 2)
@@ -87,6 +90,7 @@ define s_SuiteServicesFacility
 define s_WaitTime
 ;
 define in_Extension
+define in_MaidID
 define in_Status
 ;
 ; ************************************************************************
@@ -903,9 +907,9 @@ Return
 	Assign RecType "ST"
 
 	if "$(ExtnLen)" NE "7"
-		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:5:LJ,SP><#3>"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:5:LJ,SP> <in_MaidID:TEXT:12:><#3>"
 	if "$(ExtnLen)" EQ "7"
-		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:7:LJ,SP><#3>"
+		AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:7:LJ,SP> <in_MaidID:TEXT:12:><#3>"
 
 Return
 ; ************************************************************************
@@ -933,8 +937,11 @@ Return
 ;    Creates a room status event.
 :CreateRSEvent
 
+//	Reassign in_MaidID as numeric to strip spaces
+	Assign in_MaidID $(in_MaidID)
+
 	if "$(in_Status)" NE ""
-		CreateRoomStatus "$(in_Extension)" "$(in_Status)"
+		CreateRoomStatus "$(in_Extension)" "$(in_Status)" "$(in_MaidID)"
 
 Return
 ; ************************************************************************
