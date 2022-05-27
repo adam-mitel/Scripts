@@ -1,11 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an NEC Philips
 ;  SV8100 PBX.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2022-05-18 - 50.0.5.0
+;	* Added the ability to use Extension Facilities
+;	* Added Wakeup Extension Facility option
 ;
 ;  Modifications - AU - 2020-07-21 - 50.0.4.0
 ;	* Added Clear Text parsing to STS message
@@ -48,6 +52,8 @@ define f_WaitingForResponse
 define s_BarCOS
 define s_DoMessageWaiting
 define s_DoWakeups
+define s_ExtensionFacility
+define s_ExtensionFacilityWakeup
 define s_LocalCOS
 define s_NationalCOS
 define s_UnbarCOS
@@ -68,12 +74,22 @@ Assign s_DoMessageWaiting "YES"
 // OPT: Specify whether we want to create and send Wakeup events
 Assign s_DoWakeups "YES"
 
-; OPT: Specify Bar and Unbar codes.  Default is 0 for Bar, 3 for Unbar.
-;      If Local and National are not used, set to the same as Bar
+// OPT: Specify Bar and Unbar codes.  Default is 0 for Bar, 3 for Unbar.
+//      If Local and National are not used, set to the same as Bar
 Assign s_BarCOS "0"
 Assign s_UnbarCOS "3"
 Assign s_LocalCOS "0"
 Assign s_NationalCOS "0"
+
+// OPT: If you only wish to process events for which match a specific
+//	Extension Facility then set it below. If you wish to process
+//	all events leave it blank
+	Assign s_ExtensionFacility ""
+
+// OPT: If wakeups should only be sent to particular extensions, set
+//	the below to YES and it will only send extensions with "Voice Mail"
+//	extension facility
+	Assign s_ExtensionFacilityWakeup "NO"
 
 Exit
 ; ************************************************************************
@@ -134,6 +150,9 @@ Goto IgnoreRecord
 	if "$(s_DoMessageWaiting)" NE "YES"
 		Goto IgnoreRecord
 
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
+
 	Assign WorkVal "0"
 	if "$(_EV_MWSTATE)" EQ "TRUE"
 		Assign WorkVal "1"
@@ -153,6 +172,12 @@ Goto HandleOKAndExit
 
 	if "$(s_DoWakeups)" NE "YES"
 		Goto IgnoreRecord
+
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
+
+	if "$(s_ExtensionFacilityWakeup)" EQ "YES"
+		Call CheckExtensionFacility_Wakeup
 
 	if "$(_EV_WKACTION)" EQ "SET"
 		Goto WakeupCall_Set
@@ -193,6 +218,9 @@ Goto HandleOKAndExit
 ;   to send.
 :Checkin
 
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
+
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
@@ -212,6 +240,9 @@ Goto HandleOKAndExit
 ;   to send.
 :Checkout
 
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
+
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
@@ -224,6 +255,9 @@ Goto HandleOKAndExit
 ;   This label is executed by the program when we have a Class of Service
 ;   event to send.
 :ClassOfService
+
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
 
 	Assign WorkVal "$(s_BarCOS)"
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
@@ -246,6 +280,9 @@ Goto HandleOKAndExit
 ;   This label is executed by the program when we have a Room Update
 ;   event to send.
 :RoomUpdate
+
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
 
 	Assign SendRec "<#02>EDT1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN> 0<#03>"
 	Call SendRecord
@@ -275,6 +312,9 @@ Goto IgnoreRecord
 	if "$(_EV_EXTNNUMBER)" EQ ""
 		Goto RT_SkipCheckout
 
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility_Source
+
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
@@ -284,6 +324,9 @@ Goto IgnoreRecord
 		Echo RT: Blank Destination Extension for Event $(_EV_ID) - Skipping Checkout.
 	if "$(_EV_TRDESTEXTNNUMBER)" EQ ""
 		Goto HandleOKAndExit
+
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility_Dest
 
 	Assign SendRec "<#02>CHK0 <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
@@ -325,6 +368,9 @@ Goto IgnoreRecord
 ;   This label is executed by the program when we have a do not disturb
 ;   event to send.
 :DoNotDisturb
+
+	if "$(s_ExtensionFacility)" NE ""
+		Call CheckExtensionFacility
 
 	Assign WorkVal "0"
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
@@ -812,6 +858,44 @@ Return
 	Goto SendRecord_WaitForACK
 
 :SendRecord_GotACK
+
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  CheckExtensionFacility
+;   This label is called when we need to check if the extension matches
+;   the required Extension Facility
+:CheckExtensionFacility
+
+	ContainsStr "<s_ExtensionFacility:TEXT:255:UC>" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+
+:CheckExtensionFacility_Source
+
+	ContainsStr "<s_ExtensionFacility:TEXT:255:UC>" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto RT_SkipCheckout
+
+Return
+
+:CheckExtensionFacility_Dest
+
+	ContainsStr "<s_ExtensionFacility:TEXT:255:UC>" "<_EV_TRDESTEXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
+
+Return
+
+:CheckExtensionFacility_Wakeup
+
+	ContainsStr "VOICE" "<_EV_EXTNFACILITIES:TEXT:255:UC>" "FALSE"
+	if "$(_G_RESULT)" NE "TRUE"
+		Goto IgnoreRecord
 
 Return
 ; ************************************************************************
