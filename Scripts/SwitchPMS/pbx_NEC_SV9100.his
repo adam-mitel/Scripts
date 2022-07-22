@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an NEC Philips
 ;  SV8100 PBX.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2022-07-07 - 50.0.6.0
+;	* Added the option to add Room Number before Name
 ;
 ;  Modifications - AU - 2022-05-18 - 50.0.5.0
 ;	* Added the ability to use Extension Facilities
@@ -49,6 +52,8 @@ define WorkVal
 define f_GotResponse
 define f_WaitingForResponse
 ;
+define g_GuestName
+;
 define s_BarCOS
 define s_DoMessageWaiting
 define s_DoWakeups
@@ -56,6 +61,7 @@ define s_ExtensionFacility
 define s_ExtensionFacilityWakeup
 define s_LocalCOS
 define s_NationalCOS
+define s_RoomBeforeName
 define s_UnbarCOS
 ;
 define in_ClearText
@@ -90,6 +96,9 @@ Assign s_NationalCOS "0"
 //	the below to YES and it will only send extensions with "Voice Mail"
 //	extension facility
 	Assign s_ExtensionFacilityWakeup "NO"
+
+// OPT: Set whether we want to display the room number before the name
+	Assign s_RoomBeforeName "NO"
 
 Exit
 ; ************************************************************************
@@ -221,13 +230,17 @@ Goto HandleOKAndExit
 	if "$(s_ExtensionFacility)" NE ""
 		Call CheckExtensionFacility
 
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
 	Assign SendRec "<#02>CHK1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
-	Assign SendRec "<#02>EDT1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN> 0<#03>"
+	Assign SendRec "<#02>EDT1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><g_GuestName:TEXT:20:LJ,SP,AN> 0<#03>"
 	Call SendRecord
 
 Goto HandleOKAndExit
@@ -284,7 +297,11 @@ Goto HandleOKAndExit
 	if "$(s_ExtensionFacility)" NE ""
 		Call CheckExtensionFacility
 
-	Assign SendRec "<#02>EDT1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN> 0<#03>"
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign g_GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+
+	Assign SendRec "<#02>EDT1 <_EV_EXTNNUMBER:TEXT:8:LJ,SP><g_GuestName:TEXT:20:LJ,SP,AN> 0<#03>"
 	Call SendRecord
 
 Goto HandleOKAndExit
@@ -328,13 +345,17 @@ Goto IgnoreRecord
 	if "$(s_ExtensionFacility)" NE ""
 		Call CheckExtensionFacility_Dest
 
+	Assign g_GuestName "<_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+	if "$(s_RoomBeforeName)" EQ "YES"
+		Assign g_GuestName "$(_EV_TRDESTROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN>"
+
 	Assign SendRec "<#02>CHK0 <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
 	Assign SendRec "<#02>CHK1 <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><#03>"
 	Call SendRecord
 
-	Assign SendRec "<#02>EDT1 <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><_EV_NAMEDISPLAY:TEXT:20:LJ,SP,AN> 0<#03>"
+	Assign SendRec "<#02>EDT1 <_EV_TRDESTEXTNNUMBER:TEXT:8:LJ,SP><g_GuestName:TEXT:20:LJ,SP,AN> 0<#03>"
 	Call SendRecord
 
 	Assign WorkVal "$(s_BarCOS)"
