@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.7.0
+; Script Version: 50.0.8.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to our
 ;  AvayaIPOfficeClientService
 ;
 ;                                                              AU-20120510
+;
+;  Modifications - AU - 2022-10-06 - 50.0.8.0
+;	* Added DND setting check to enhanced COS
 ;
 ;  Modifications - AU - 2021-01-20 - 50.0.7.0
 ;	* Fixed spelling mistake causing problems when DND was enabled
@@ -284,8 +287,13 @@ Goto HandleOKAndExit
 
 :ClassOfService_EnhancedCOS
 
+	if "$(s_ProcessDND)" NE "TRUE"
+		Goto ClassOfService_EnhancedCOS_NoDND
+
 	if "$(_EV_COSDNDACTION)" EQ "DONOTDISTURB"
 		Goto ClassOfService_EnhancedCOS_DND
+
+:ClassOfService_EnhancedCOS_NoDND
 
 	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
 		Assign WorkVal "$(s_BarCOS)"
