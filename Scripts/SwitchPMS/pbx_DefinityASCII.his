@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.2.0
+; Script Version: 50.0.3.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an Avaya
@@ -29,23 +29,26 @@
 ;			periodically or the link will timeout. It is recommended that
 ;			you set PeriodicCheckInterval to be between 5 and 20 seconds.
 ;
-;  Modifications - AU - 09/04/2016 - 50.0.2.0
+;  Modifications - AU - 2022-09-22 - 50.0.3.0
+;	* Resolved issue with message count sending the incorrect hex characters
+;
+;  Modifications - AU - 2016-04-09 - 50.0.2.0
 ;	* Added a setting to change the Room Transfer method to Checkout/Checkin (Default)
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;
-;  Modifications - AU - 28/05/2013
+;  Modifications - AU - 2013-05-28
 ;	* Modified all incoming records so the extension is RJ,ZP
 ;
-;  Modifications - AU - 25/10/2011
+;  Modifications - AU - 2011-10-25
 ;	* Modified HandleRoomStatus so we will not create an event if in_RoomStatusCode
 ;	  is blank which was causing HI.exe to hang
 ;
-;  Modifications - AU - 19/04/2011
+;  Modifications - AU - 2011-04-19
 ;	* Modified Extension Number in DDI section to be RJ rather than LJ
 ;
-;  Modifications - AU - 22/09/2010
+;  Modifications - AU - 2010-09-22
 ;	* Modified DDI number in DDI section to be RJ from LJ
 ;	* Added an option to set whether DDI should be allocated only to master extensions
 ;	* Added an option in the INIT to set whether it is an IP Connection or not
@@ -188,14 +191,12 @@ goto IgnoreRecord
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	Assign GuestName "<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
 	if "$(s_RoomBeforeName)" EQ "YES"
 		Assign GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
 	
-	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	Assign SendRec "<#38>$(MsgCnt)CKI1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
 
@@ -213,11 +214,9 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	// Build Record
-	Assign SendRec "<#41><MsgCnt:TEXT:1:LJ,ZP>CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+	Assign SendRec "<#41>$(MsgCnt)CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -236,14 +235,12 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	Assign WorkVal 1
 	if "$(_EV_COSALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal 0
 
-	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+	Assign SendRec "<#37>$(MsgCnt)CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -262,14 +259,12 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	Assign GuestName "<_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
 	if "$(s_RoomBeforeName)" EQ "YES"
 		Assign GuestName "$(_EV_ROOMNUMBER) <_EV_NAMEDISPLAY:TEXT:$(NameLength):LJ,SP,AN>"
 	
-	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+	Assign SendRec "<#40>$(MsgCnt)GIC1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -296,10 +291,8 @@ goto HandleOkAndExit
 	
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#36><MsgCnt:TEXT:1:LJ,ZP>RMC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+	Assign SendRec "<#36>$(MsgCnt)RMC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -308,10 +301,8 @@ goto HandleOkAndExit
 
 	// Send room update with new name for destination extn.
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+	Assign SendRec "<#40>$(MsgCnt)GIC1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -327,11 +318,9 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	// Build Record
-	Assign SendRec "<#41><MsgCnt:TEXT:1:LJ,ZP>CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
+	Assign SendRec "<#41>$(MsgCnt)CKO1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -345,10 +334,8 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 	
-	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	Assign SendRec "<#38>$(MsgCnt)CKI1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
 
@@ -356,14 +343,12 @@ goto HandleOkAndExit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	Assign WorkVal 1
 	if "$(_EV_TRALLOWOUTGOING)" EQ "TRUE"
 		Assign WorkVal 0
 
-	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+	Assign SendRec "<#37>$(MsgCnt)CR 1<_EV_TRDESTEXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -417,13 +402,11 @@ goto IgnoreRecord
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#35><MsgCnt:TEXT:1:LJ,ZP>MSG$(WorkVal)<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>$(GuestName)2  <#3>"
+	Assign SendRec "<#35>$(MsgCnt)MSG$(WorkVal)<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP>$(GuestName)2  <#3>"
 	
 	// Custom DID TEST
-//	Assign SendRec "<#73><MsgCnt:TEXT:1:LJ,ZP>VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ,SP>30081                        <#3>"
+//	Assign SendRec "<#73>$(MsgCnt)VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):LJ,SP>30081                        <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -475,8 +458,6 @@ goto IgnoreRecord
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
 	Assign WorkVal 0
 	if "$(_EV_ALLOWOUTGOING)" NE "1"
@@ -485,7 +466,7 @@ goto IgnoreRecord
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
 		Assign WorkVal $(WorkVal) + 5
 
-	Assign SendRec "<#37><MsgCnt:TEXT:1:LJ,ZP>CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
+	Assign SendRec "<#37>$(MsgCnt)CR 1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><WorkVal:TEXT:1:RJ,ZP> <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -531,10 +512,8 @@ goto IgnoreRecord
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#73><MsgCnt:TEXT:1:LJ,ZP>VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_DDI:TEXT:5:RJ,SP>                        <#3>"
+	Assign SendRec "<#73>$(MsgCnt)VIP1<_EV_EXTNNUMBER:TEXT:$(ExtnLength):RJ,SP><_EV_DDI:TEXT:5:RJ,SP>                        <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -565,10 +544,8 @@ Exit
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STSFF  <#3>"
+	Assign SendRec "<#113>$(MsgCnt)STSFF  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -990,9 +967,9 @@ Return
 
 	; Depending on whether this was an HKR or HKS record send the correct reply.
 	if "$(in_FeatCode)" EQ "<#33>"
-		Assign SendRec "<#33><MsgCnt:TEXT:1:LJ,ZP>HKR9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
+		Assign SendRec "<#33>$(MsgCnt)HKR9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
 	if "$(in_FeatCode)" EQ "<#34>"
-		Assign SendRec "<#34><MsgCnt:TEXT:1:LJ,ZP>HKS9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
+		Assign SendRec "<#34>$(MsgCnt)HKS9<in_Station:TEXT:$(ExtnLength):RJ,ZP>        <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -1066,10 +1043,8 @@ Return
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#40><MsgCnt:TEXT:1:LJ,ZP>GIC1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
+	Assign SendRec "<#40>$(MsgCnt)GIC1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>          <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -1173,10 +1148,8 @@ Return
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 	
-	Assign SendRec "<#38><MsgCnt:TEXT:1:LJ,ZP>CKI1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
+	Assign SendRec "<#38>$(MsgCnt)CKI1<in_Station:TEXT:$(ExtnLength):RJ,SP><CovPath:TEXT:4:RJ,SP><in_GuestName:TEXT:$(NameLength):LJ,SP,AN>      n    <#3>"
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
 
@@ -1219,10 +1192,8 @@ Return
 	; Start DB Swap
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS3F  <#3>"
+	Assign SendRec "<#113>$(MsgCnt)STS3F  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -1232,10 +1203,8 @@ Return
 	; End DB Swap
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS4F  <#3>"
+	Assign SendRec "<#113>$(MsgCnt)STS4F  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -1252,10 +1221,8 @@ Return
 
 	// Generate Message Count
 	Call GetNextMsgCnt
-	JoinNibbles $(MsgCnt) "<#15>"
-	Assign MsgCnt "$(_G_RESULT)"
 
-	Assign SendRec "<#113><MsgCnt:TEXT:1:LJ,ZP>STS6F  <#3>"
+	Assign SendRec "<#113>$(MsgCnt)STS6F  <#3>"
 
 	GenerateBCCChar "" "$(SendRec)"
 	assign SendRec "<#2>$(SendRec)$(_G_BCC)"
@@ -1278,10 +1245,37 @@ Return
 
 	; Calculate MsgCnt field.
 	GetNextAutoIncNumber MsgCntr
-	Assign MsgCnt "$(_G_RESULT)" % 10
-	Assign MsgCnt "$(MsgCnt)" + 2
-	
-//	Assign MsgCnt "$(_G_RESULT)"
+
+	//0x2f
+	if "$(_G_RESULT)" EQ "0"
+		Assign MsgCnt "<#47>"
+	//0x3f
+	if "$(_G_RESULT)" EQ "1"
+		Assign MsgCnt "<#63>"
+	//0x4f
+	if "$(_G_RESULT)" EQ "2"
+		Assign MsgCnt "<#79>"
+	//0x5f
+	if "$(_G_RESULT)" EQ "3"
+		Assign MsgCnt "<#95>"
+	//0x6f
+	if "$(_G_RESULT)" EQ "4"
+		Assign MsgCnt "<#111>"
+	//0x7f
+	if "$(_G_RESULT)" EQ "5"
+		Assign MsgCnt "<#127>"
+	//0x8f
+	if "$(_G_RESULT)" EQ "6"
+		Assign MsgCnt "<#143>"
+	//0x9f
+	if "$(_G_RESULT)" EQ "7"
+		Assign MsgCnt "<#159>"
+	//0xaf
+	if "$(_G_RESULT)" EQ "8"
+		Assign MsgCnt "<#175>"
+	//0xbf
+	if "$(_G_RESULT)" EQ "9"
+		Assign MsgCnt "<#191>"
 
 Return
 ; ************************************************************************
