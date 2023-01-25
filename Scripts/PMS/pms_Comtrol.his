@@ -1,11 +1,15 @@
-; Coded For: 6.0.0.0
-; Script Version: 50.0.0.1
+; Coded For: 6.0.0.1
+; Script Version: 50.0.2.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a Fidelio
 ;  Iface PC.
 ;
-;                                                               ph-210700
+;                                                                ph-210700
+;
+;  Modifications - AU - 17/10/2013 - 50.0.2.0
+;	* Enhanced protocol to support Name format 2, containing:
+;	  NAME\EMAIL\MOBILE. Email is put into cfg0 and mobile cfg1
 ;
 ;  Modifications - AU - 17/10/2013
 ;	* Updated to utilise V50 specific features
@@ -43,6 +47,8 @@ define in_FlagValue
 define in_DestRoom
 define in_StationID
 define in_BCCChar
+define in_Email
+define in_Mobile
 
 define flg_SendingAfterReceive
 define flg_NextIsBCC
@@ -391,11 +397,36 @@ goto READINGREC
 if "$(RecType)" EQ ""
   goto SkipProcessIncoming
 
+; Clear down the old variables
+Assign in_Room ""
+Assign in_LNStatus ""
+Assign in_Reservation ""
+Assign in_GuestID ""
+Assign in_Wakeup1 ""
+Assign in_Wakeup2 ""
+Assign in_LanguageDesc ""
+Assign in_LanguageCode ""
+Assign in_COS ""
+Assign in_MWStatus ""
+Assign in_RmStatus ""
+Assign in_GuestName ""
+Assign in_FlagValue ""
+Assign in_DestRoom ""
+Assign in_StationID ""
+Assign in_BCCChar ""
+Assign in_Email ""
+Assign in_Mobile ""
+
 ; Extract the fields from the record and process them to create the events.
 assign _G_IN_RECORD "$(ReceivedRec)"
 parseInRecord
 if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
 	goto ReceiveError
+
+; If the guest name has a \ in it, then we need to split out the components
+ContainsSTR "\\" "$(in_GuestName)" "FALSE"
+if "$(_G_RESULT)" EQ "TRUE"
+	Call NAMEFORMAT
 
 if "$(RecType)" EQ "SR"
 	call CreateSREvents
@@ -472,6 +503,22 @@ Return
 :DSRECORD
   assign RecType "DS"
   assignasis _G_IN_RECORDFORMAT "<#1>DS<#2><in_Room:TEXT:5:RJ,SP> <in_FlagValue:NUMBER:1:> <in_StationID:TEXT:2:><#3>"
+Return
+; ************************************************************************
+
+
+; ************************************************************************
+;  NAMEFORMAT
+;    Sets up the expected format for the NAME format
+:NAMEFORMAT
+
+  assignasis _G_IN_RECORDFORMAT "<in_GuestName:TEXT:35:>\\<in_Email:TEXT:100:>\\<in_Mobile:TEXT:20:>\\<#3>"
+
+  assign _G_IN_RECORD "$(in_GuestName)<#3>"
+  parseInRecord
+  if "$(_G_IN_RECORDPARSEERROR)" EQ "TRUE"
+	Echo Er: Error splitting out name field with \
+
 Return
 ; ************************************************************************
 
@@ -589,7 +636,7 @@ Return
 Assign in_GuestID "$(in_Reservation)"
 
 if "<in_LNStatus:TEXT:1:>" EQ "3"
-	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "$(in_LanguageDesc)" "$(in_LanguageCode)" "$(in_GuestName)" "" "" "" "TRUE" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$(in_GuestID)"
+	CreateCheckIn "$(in_Room)" "$(in_Reservation)" "$(in_LanguageDesc)" "$(in_LanguageCode)" "$(in_GuestName)" "" "" "" "TRUE" "$(in_Email)" "$(in_Mobile)" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$(in_GuestID)"
 
 if "<in_LNStatus:TEXT:1:>" EQ "2"
 	CreateCheckOut "$(in_Room)" "$(in_Reservation)" "$(in_LanguageDesc)" "<in_LanguageCode:NUMBER:2:RJ,ZP>"
