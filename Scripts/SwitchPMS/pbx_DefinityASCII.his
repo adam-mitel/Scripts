@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.3.0
+; Script Version: 50.0.4.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an Avaya
@@ -28,6 +28,9 @@
 ;			This PABX has a heartbeat message which must be sent 
 ;			periodically or the link will timeout. It is recommended that
 ;			you set PeriodicCheckInterval to be between 5 and 20 seconds.
+;
+;  Modifications - AU - 2023-02-06 - 50.0.4.0
+;	* Resolved issue with Maid ID being processed
 ;
 ;  Modifications - AU - 2022-09-22 - 50.0.3.0
 ;	* Resolved issue with message count sending the incorrect hex characters
@@ -646,6 +649,7 @@ Return
 ; ************************************************************************
 :ReceiveRecord
 	Assign RecType ""
+	Assign in_MaidID ""
 
 	; Read next character, this is the Feature Code
 	ReadFromPort 1 1
@@ -949,10 +953,13 @@ Return
 
 	Call SendRSReply
 
+	ReplaceStr "$(in_MaidID)" "F" "" "TRUE" "FALSE"
+	Assign in_MaidID "$(_G_RESULT)"
+
 	if "$(in_RoomStatusCode)" EQ ""
 		Echo Er: Blank in_RoomStatusCode for Extension $(in_RoomStatusStation) - Skipping event
 	if "$(in_RoomStatusCode)" NE ""
-		CreateRoomStatus "$(in_RoomStatusStation)" "$(in_RoomStatusCode)"
+		CreateRoomStatus "$(in_RoomStatusStation)" "$(in_RoomStatusCode)" "$(in_MaidID)"
 
 	Assign in_RoomStatusStation ""
 	Assign in_RoomStatusCode ""
