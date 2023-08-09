@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an Alcatel
@@ -7,6 +7,9 @@
 ;  OLD (Office Link Driver) on the TigerTMS PC and then we connect to it
 ;
 ;                                                              AU-20131017
+;
+;  Modifications - AU - 2023-04-17 - 50.0.5.0
+;	* Changed incoming Wakeup command format (P records)
 ;
 ;  Modifications - AU - 2022-02-02 - 50.0.4.0
 ;	* Removed N records to only send M records
@@ -903,7 +906,7 @@ Return
 ;   Setup the expected format for receiving a P record (Wakeup)
 :PRECORD
 
-	AssignAsIs _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:8:RJ,SP>W  <in_WKCode:TEXT:1:LJ,SP> <in_WKActDate:TEXT:10:RJ,SP><in_WKOriginator:TEXT:5:LJ,SP><in_WKTime:TIME:4:HHMM> <in_BCC:TEXT:2:RJ,ZP><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>P<in_Extn:TEXT:8:RJ,SP>W  <in_WKCode:TEXT:1:LJ,SP> <in_WKActDate:DATE:6:DDMMYY><in_WKTime:TIME:4:HHMM> <in_WKOriginator:TEXT:8:LJ,SP> <in_BCC:TEXT:2:RJ,ZP><#3>"
 
 Return
 ; ************************************************************************
