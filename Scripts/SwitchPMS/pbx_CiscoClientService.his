@@ -1,11 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.6.0
+; Script Version: 50.0.7.0
 ; ************************************************************************
 ;
 ;  This is the script for interfacing to a Cisco Call Manager via our
 ;  CiscoCMClientService, minimum version 50.2.5.0.
 ;
 ;                                                              AU-20131028
+;
+;  Modifications - AU - 2023-03-06 - 50.0.7.0
+;	* Added an option for Partition Name to be specified to only update
+;	  a single partition
 ;
 ;  Modifications - AU - 2020-02-23 - 50.0.6.0
 ;	* Added option s_RoomBeforeName
@@ -53,6 +57,7 @@ define s_ResetOnCheckout
 define s_DoHardReset
 define s_DoNotDisturb
 define s_DNDForwardNumber
+define s_PartitionName
 define s_RoomBeforeName
 define s_SetIdleURL
 define s_SetServicesURL
@@ -86,6 +91,10 @@ define s_ServicesURL
 //	     the Cisco CallManager.  This should only be enabled if the
 //	     PMS system supports it
 	Assign s_DoEnhancedCSS "FALSE"
+
+//	OPT: If we should only update one partition enter the partition name here
+//	     It is case sensitive
+	Assign s_PartitionName ""
 
 //	OPT: Set whether we want to Unbar the phone on Checkin.  This should
 //	     be enabled if we don't get a COS event from the PMS on Checkin
@@ -209,8 +218,15 @@ Goto IgnoreRecord
 	if "$(s_RoomBeforeName)" EQ "TRUE"
 		Assign g_GuestName "$(_EV_ROOMNUMBER) $(g_GuestName)"
 
-	Echo CI: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+
+	if "$(s_PartitionName)" EQ ""
+		Echo CI: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo CI: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
@@ -235,8 +251,14 @@ Goto IgnoreRecord
 	if "$(s_UnbarOnCheckin)" NE "TRUE"
 		Goto CI_CheckIdleURL
 
-	Echo CI: Setting CSS to $(UnbarCSS) on $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo CI: Setting CSS to $(UnbarCSS) on $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo CI: Setting CSS to $(UnbarCSS) on $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(UnbarCSS)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
   
 :CI_CheckIdleURL
@@ -246,6 +268,8 @@ Goto IgnoreRecord
 
 	Echo CI: Clearing Idle URL on $(_EV_EXTNNUMBER)
 	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)||0|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :CI_CheckServicesURL
@@ -255,6 +279,8 @@ Goto IgnoreRecord
 
 	Echo CI: Setting Services URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_ServicesURL)?Room=$(_EV_ROOMNUMBER)
 	Assign SendRec "SOAPSETSERVICESURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_ServicesURL)?Room=$(_EV_ROOMNUMBER)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :CI_Complete
@@ -271,8 +297,14 @@ Goto HandleOKAndExit
 ;   to send.
 :Checkout
 
-	Echo CO: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo CO: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo CO: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"Vacant $(_EV_ROOMNUMBER)\"|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
@@ -290,8 +322,14 @@ Goto HandleOKAndExit
 
 :CO_CheckCSS
 
-	Echo CO: Setting CSS to "$(BarCSS)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo CO: Setting CSS to $(BarCSS) on $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo CO: Setting CSS to $(BarCSS) on $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(BarCSS)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :CO_CheckReboot
@@ -320,6 +358,8 @@ Goto HandleOKAndExit
 
 	Echo CO: Setting Idle URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_IdleURL)
 	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_IdleURL)?Room=$(_EV_ROOMNUMBER)|120|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :CO_Complete
@@ -355,8 +395,14 @@ Goto HandleOKAndExit
 
 :COS_SkipEnhancedCSS
 
-	Echo COS: Setting CSS to "$(WorkVal)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo COS: Setting CSS to "$(WorkVal)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo COS: Setting CSS to "$(WorkVal)" for Extension $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(WorkVal)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 	Echo COS: Completed update of CSS $(WorkVal) on $(_EV_EXTNNUMBER).
@@ -379,9 +425,16 @@ Goto HandleOKAndExit
 	if "$(s_RoomBeforeName)" EQ "TRUE"
 		Assign g_GuestName "$(_EV_ROOMNUMBER) $(g_GuestName)"
 
-	Echo RU: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo RU: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo RU: Setting name to "$(g_GuestName)" for Extension $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
+
 
 	Echo RU: Completed name change to $(g_GuestName) on $(_EV_EXTNNUMBER).
 
@@ -431,8 +484,14 @@ Goto IgnoreRecord
 
 :TR_RetryName
 
-	Echo TR: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo TR: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo TR: Setting name to "Vacant $(_EV_ROOMNUMBER)" for Extension $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETNAME|1|$(_EV_EXTNNUMBER)|\"Vacant $(_EV_ROOMNUMBER)\"|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
@@ -450,8 +509,14 @@ Goto IgnoreRecord
 
 :TR_RetryCOS
 
-	Echo TR: Set CSS to $(BarCSS) for $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo CO: Setting CSS to $(BarCSS) on $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo CO: Setting CSS to $(BarCSS) on $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETCOS|1|$(_EV_EXTNNUMBER)|$(BarCSS)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 	if "$(s_ResetOnCheckout)" NE "TRUE"
@@ -478,6 +543,8 @@ Goto IgnoreRecord
 
 	Echo TR: Setting Idle URL on $(_EV_EXTNNUMBER) to http:\/\/$(s_IdleURL)
 	Assign SendRec "SOAPSETIDLEURL|$(_EV_EXTNNUMBER)|http:\/\/$(s_IdleURL)?Room=$(_EV_ROOMNUMBER)|120|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :TR_CheckoutComplete
@@ -517,9 +584,16 @@ Goto IgnoreRecord
 	if "$(s_RoomBeforeName)" EQ "TRUE"
 		Assign g_GuestName "$(_EV_TRDESTROOMNUMBER) $(g_GuestName)"
 
-	Echo TR: Setting name to "$(g_GuestName)" for Extension $(_EV_TRDESTEXTNNUMBER).
+	if "$(s_PartitionName)" EQ ""
+		Echo TR: Setting name to "$(g_GuestName)" for Extension $(_EV_TRDESTEXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo TR: Setting name to "$(g_GuestName)" for Extension $(_EV_TRDESTEXTNNUMBER) on Partition $(s_PartitionName)
+
 	Assign SendRec "SOAPSETNAME|1|$(_EV_TRDESTEXTNNUMBER)|\"<g_GuestName:TEXT:$(s_TotalNameLength):AN>\"|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
+
 
 	ContainsStr "Directory User" "$(_EV_EXTNFACILITIES)" "FALSE"
 	if "$(_G_RESULT)" NE "TRUE"
@@ -540,8 +614,14 @@ Goto IgnoreRecord
 
 :TR_RetryDstCOS
 
-	Echo TR: Set CSS to $(WorkVal) for $(_EV_TRDESTEXTNNUMBER).
-	Assign SendRec "SOAPSETCOS|1|$(_EV_TRDESTEXTNNUMBER)|$(UnbarCSS)|"
+	if "$(s_PartitionName)" EQ ""
+		Echo TR: Setting CSS to "$(WorkVal)" for Extension $(_EV_TRDESTEXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo TR: Setting CSS to "$(WorkVal)" for Extension $(_EV_TRDESTEXTNNUMBER) on Partition $(s_PartitionName)
+
+	Assign SendRec "SOAPSETCOS|1|$(_EV_TRDESTEXTNNUMBER)|$(WorkVal)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :TRSkip
@@ -553,6 +633,8 @@ Goto IgnoreRecord
 
 	Echo TR: Clearing Idle URL on $(_EV_TRDESTEXTNNUMBER)
 	Assign SendRec "SOAPSETIDLEURL|$(_EV_TRDESTEXTNNUMBER)||0|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :TR_CICheckServicesURL
@@ -562,6 +644,8 @@ Goto IgnoreRecord
 
 	Echo TR: Setting Services URL on $(_EV_TRDESTEXTNNUMBER) to http:\/\/$(s_ServicesURL)?Room=$(_EV_TRDESTROOMNUMBER)
 	Assign SendRec "SOAPSETSERVICESURL|$(_EV_TRDESTEXTNNUMBER)|http:\/\/$(s_ServicesURL)?Room=$(_EV_TRDESTROOMNUMBER)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 
 :TR_CheckinComplete
@@ -599,10 +683,15 @@ Goto IgnoreRecord
 	if "$(_EV_DNDACTION)" EQ "DONOTDISTURB"
 		Assign WorkVal "TRUE"
 
-	Assign SendRec "SOAPSETDND|$(_EV_EXTNNUMBER)|$(WorkVal)|"
-	Call SendRecord
+	if "$(s_PartitionName)" EQ ""
+		Echo DND: Setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
+	if "$(s_PartitionName)" NE ""
+		Echo DND: Setting DND to $(WorkVal) on $(_EV_EXTNNUMBER) on Partition $(s_PartitionName)
 
-	Echo DND: Completed setting DND to $(WorkVal) on $(_EV_EXTNNUMBER).
+	Assign SendRec "SOAPSETDND|$(_EV_EXTNNUMBER)|$(WorkVal)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
+	Call SendRecord
 
 	Goto HandleOKAndExit
 
@@ -614,6 +703,8 @@ Goto IgnoreRecord
 		Assign WorkVal "BLANK"
 
 	Assign SendRec "SOAPSETCALLFORWARD|$(_EV_EXTNNUMBER)|$(WorkVal)|"
+	if "$(s_PartitionName)" NE ""
+		Assign SendRec "$(SendRec)\"$(s_PartitionName)\"|"
 	Call SendRecord
 	Echo DND: Completed setting DND Call Forward to $(WorkVal) on $(_EV_EXTNNUMBER).
 
