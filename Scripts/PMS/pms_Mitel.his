@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.7.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for emulating a Mitel Interface.
@@ -7,6 +7,9 @@
 ;  Note: This interface does not support Reservation Numbers
 ;
 ;                                                             AU-20120820
+;
+;  Modifications - AU - 2023-04-19 - 50.0.5.0
+;	* Set NAM3 (Delete Name) to be ignored by Room Update
 ;
 ;  Modifications - AU - 2021-08-26 - 50.0.7.0
 ;	* Added option s_CheckinOnNAM to create Checkin events on NAM instead of CHK1
@@ -619,6 +622,9 @@ Return
 :HandleNAM
 
 	if "$(in_Name)" EQ ""
+		Return
+
+	if "$(in_Status)" EQ "3"
 		Return
 
 	if "$(s_CheckinOnNAM)" NE "TRUE"
