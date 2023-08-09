@@ -1,12 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.15.0
+; Script Version: 50.0.16.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
 ;
-;  Modifications - AU - 2022-04-26 - 50.0.15.0 - PROVISIONAL
+;  Modifications - AU - 2023-05-01 - 50.0.16.0
+;	* Added an option for Room Status only to be used in conjunction with MiXML
+;
+;  Modifications - AU - 2022-04-26 - 50.0.15.0
 ;	* Added support for MaidID on STS messages
 ;
 ;  Modifications - AU - 2020-04-08 - 50.0.14.0
@@ -79,6 +82,7 @@ define s_DoMessageWaiting
 define s_DoWakeups
 define s_DoVIP
 define s_UseRST
+define s_RoomStatusOnly
 define s_RSTBarCOS
 define s_RSTUnbarCOS
 define s_RSTLocalCOS
@@ -161,6 +165,9 @@ Assign s_SuiteServices "NO"
 ; OPT: If Suite Services is enabled and the extension facility isn't "Suite" you can
 ;      customise it below
 Assign s_SuiteServicesFacility "Suite"
+
+; OPT: If we only want to process incoming Room Status events enable it below
+Assign s_RoomStatusOnly "FALSE"
 
 ; OPT: Put the time in seconds we should wait before we should attemp to send after
 ;      receiving a record
@@ -258,6 +265,9 @@ goto IgnoreRecord
 ;   event to send.
 :MessageWaiting
 
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
+
 	if "$(s_DoMessageWaiting)" NE "YES"
 		Goto IgnoreRecord
 
@@ -283,6 +293,9 @@ Goto HandleOKAndExit
 ;   This label is executed by the program when we have a Wakeup Call
 ;   event to send.
 :WakeupCall
+
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
 
 	if "$(s_DoWakeups)" NE "YES"
 		Goto IgnoreRecord
@@ -324,6 +337,9 @@ Goto HandleOKAndExit
 ;   to send.
 :Checkin
 
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
+
 	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
 		Goto CheckIncoming
 
@@ -362,6 +378,9 @@ Goto HandleOKAndExit
 ;   to send.
 :Checkout
 
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
+
 	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
 		Goto CheckIncoming
 
@@ -380,6 +399,9 @@ Goto HandleOKAndExit
 ;   This label is executed by the program when we have a Class of Service
 ;   event to send.
 :ClassOfService
+
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
 
 	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
 		Goto CheckIncoming
@@ -434,6 +456,9 @@ Goto HandleOKAndExit
 ;   event to send.
 :RoomUpdate
 
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
+
 	if "$(s_DoNames)" NE "YES"
 		Goto IgnoreRecord
 
@@ -478,6 +503,9 @@ goto IgnoreRecord
 ;   This label is executed by the program when we have a Room Transfer
 ;   event to send.
 :RoomTransfer
+
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
 
 	if "$(_WAITTIMEEXPIRED2)" NE "TRUE"
 		Goto CheckIncoming
@@ -578,6 +606,9 @@ Goto HandleOKAndExit
 ;   event to send.
 :ExtraGuest
 
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
+
 	if "$(s_DoExtraGuest)" NE "YES"
 		Goto IgnoreRecord
 
@@ -626,6 +657,9 @@ Goto HandleOKAndExit
 ;   This label is executed by the program when we have a do not disturb
 ;   event to send.
 :DoNotDisturb
+
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Goto IgnoreRecord
 
 	if "$(s_DoDND)" NE "YES"
 		Goto IgnoreRecord
@@ -919,6 +953,9 @@ Return
 ;  CreateMWEvent
 ;    Creates the message waiting event.
 :CreateMWEvent
+
+	if "$(s_RoomStatusOnly)" EQ "TRUE"
+		Return
 
 	if "$(s_DoMessageWaiting)" NE "YES"
 		Return
