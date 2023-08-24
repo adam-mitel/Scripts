@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.29.0
+; Script Version: 50.0.30.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2023-08-24 - 50.0.30.0
+;	* Added MaidID support to Minibar events
 ;
 ;  Modifications - AU - 2022-04-05 - 50.0.29.0
 ;	* Added CS handler to partial share room transfers
@@ -564,17 +567,22 @@ Goto HandleOKAndExit
 
 // If our link is not up then we're waiting for a Link Alive (LA) message.
 if "$(f_LinkAlive)" NE "TRUE"
-	Goto CheckIncoming	
+	Goto CheckIncoming
 
 if "$(_EV_MBITEMCODE)" NE "9999"
-	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTM|MA$(_EV_MBITEMCODE)|M#$(_EV_MBITEMQUANTITY)|SO20|<#3>"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTM|MA$(_EV_MBITEMCODE)|M#$(_EV_MBITEMQUANTITY)|SO20|"
 if "$(_EV_MBITEMCODE)" EQ "9999"
-	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO30|<#3>"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO30|"
 if "$(_EV_MBDESCRIPTION)" EQ "Internet Charge"
-	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO30|<#3>"
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTInternet Charge|SO30|"
 if "$(_EV_MBDESCRIPTION)" EQ "Television Charge"
-	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTTelevision Charge|SO40|<#3>"
-	
+	Assign SendRec "PS|DA<_EV_EVENTDATE:DATE:6:YYMMDD>|TI<_EV_EVENTTIME:TIME:6:HHMMSS>|RN$(_EV_ROOMNUMBER)|P#$(_EV_ID)|PTC|TA$(_EV_MBCHARGEPENCE)|CTTelevision Charge|SO40|"
+
+if "$(_EV_MBMAIDID)" NE ""
+	Assign SendRec "$(SendRec)ID$(_EV_MBMAIDID)|<#3>"
+if "$(_EV_MBMAIDID)" EQ ""
+	Assign SendRec "$(SendRec)<#3>"
+
 if "$(s_Connection)" NE "IP"
 	GenerateBCCChar "" "$(SendRec)"
 if "$(s_Connection)" NE "IP"
@@ -3158,7 +3166,7 @@ Return
 	Call SendRecord
 
 //	Send Link Record (LR) message for Posting Simple (PS).
-	Assign SendRec "LR|RIPS|FLDATIRNP#PTDUDDTACTMAM#MPSOS1D1SCT1T2T3|<#3>"
+	Assign SendRec "LR|RIPS|FLDATIRNP#PTDUDDTACTMAM#MPSOS1D1SCT1T2T3ID|<#3>"
 	if "$(s_Connection)" NE "IP"
 		GenerateBCCChar "" "$(SendRec)"
 	if "$(s_Connection)" NE "IP"
