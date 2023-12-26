@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.7.0
+; Script Version: 50.0.9.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to an NEC Philips
 ;  SV8100 PBX.
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2023-12-26 - 50.0.8.0
+;	* Added support for STT along side STS messages
 ;
 ;  Modifications - AU - 2022-12-22 - 50.0.7.0
 ;	* Added support for Minibar events via SP records
@@ -72,6 +75,7 @@ define in_Extension
 define in_MBItem
 define in_MBQuantity
 define in_Status
+define in_StatusType
 define in_Time
 ;
 ; ************************************************************************
@@ -727,7 +731,7 @@ Return
 ;    Sets up the expected format for an ST record
 :STRecordFormat
 
-	AssignAsIs _G_IN_RECORDFORMAT "<#2>STS<in_Status:TEXT:1:> <in_Extension:TEXT:8:LJ,SP> <in_ClearText:TEXT:255:><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>ST<in_StatusType:TEXT:1:LJ,SP><in_Status:TEXT:1:LJ,SP> <in_Extension:TEXT:8:LJ,SP> <in_ClearText:TEXT:255:><#3>"
 
 Return
 ; ************************************************************************

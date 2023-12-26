@@ -1,11 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.8.0
+; Script Version: 50.0.9.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to our
 ;  AvayaIPOfficeClientService
 ;
 ;                                                              AU-20120510
+;
+;  Modifications - AU - 2023-09-05 - 50.0.9.0
+;	* Added a check to SendRecord so we don't send the same record twice
+;	  in a row to cut down on events sent to the service
 ;
 ;  Modifications - AU - 2022-10-06 - 50.0.8.0
 ;	* Added DND setting check to enhanced COS
@@ -60,6 +64,8 @@ define s_ProcessEnhancedCOS
 define s_RoomBeforeName
 ;
 define g_GuestName
+;
+define f_LastSentRec
 ;
 ; ************************************************************************
 ;  INIT
@@ -122,6 +128,8 @@ Goto PORT_OPENED
 ;  PORT_OPENED
 ;    This label is called when an IP Connection is established.
 :PORT_OPENED
+
+	Assign f_LastSentRec ""
 
 Exit
 ; ************************************************************************
@@ -712,6 +720,9 @@ Exit
 ;   client.
 :SendRecord
 
+	if "$(SendRec)" EQ "$(f_LastSentRec)"
+		Return
+
 	Send $(SendRec)<#13><#10>
 	Echo Tx: $(SendRec)
 
@@ -741,6 +752,8 @@ Exit
 	Goto SendRecord_WaitForACK
 
 :SendRecord_GotACK
+
+	Assign f_LastSentRec "$(SendRec)"
 
 	Echo Rx: $(ReceivedRec)
 	Sleep 2000

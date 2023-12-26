@@ -1,10 +1,13 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.16.0
+; Script Version: 50.0.17.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to Mitel MiVoice Business
 ;
 ;                                                               ph-200200
+;
+;  Modifications - AU - 2023-12-01 - 50.0.17.0
+;	* Added an option to send NAM2 on checkout
 ;
 ;  Modifications - AU - 2023-05-01 - 50.0.16.0
 ;	* Added an option for Room Status only to be used in conjunction with MiXML
@@ -88,6 +91,7 @@ define s_RSTUnbarCOS
 define s_RSTLocalCOS
 define s_RSTNationalCOS
 define s_RSTUseSource
+define s_CheckoutNAM
 define s_Connection
 define s_SuiteServices
 define s_SuiteServicesFacility
@@ -156,6 +160,9 @@ Assign s_RSTNationalCOS "0"
 
 ; OPT: Enable this option to send the RST code we received from emulating a Mitel
 Assign s_RSTUseSource "NO"
+
+; OPT: If we need to send a NAM2 on checkout, enter the name to set here e.g. "Vacant Room"
+Assign s_CheckoutNAM ""
 
 ; OPT: If using Suite Services, enable it here.  In dirdefn you need to assign
 ;      an Extension Facility of "Suite" to the Suite extension. If it is something
@@ -390,6 +397,11 @@ Goto HandleOKAndExit
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
 	Call SendRecord
 
+	if "$(s_CheckoutNAM)" NE ""
+		Assign SendRec "<#02>NAM2 <s_CheckoutNAM:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(s_CheckoutNAM)" NE ""
+		Call SendRecord
+
 Goto HandleOKAndExit
 ; ************************************************************************
 
@@ -520,6 +532,11 @@ goto IgnoreRecord
 
 	Assign SendRec "<#02>CHK0 <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
 	Call SendRecord
+
+	if "$(s_CheckoutNAM)" NE ""
+		Assign SendRec "<#02>NAM2 <s_CheckoutNAM:TEXT:$(NameLen):LJ,SP,AN> <_EV_EXTNNUMBER:TEXT:$(ExtnLen):LJ,SP><#03>"
+	if "$(s_CheckoutNAM)" NE ""
+		Call SendRecord
 
 :RT_SkipCheckout
 
