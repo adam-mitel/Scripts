@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.30.0
+; Script Version: 50.0.31.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2024-01-03 - 50.0.31.0
+;	* Added option to do checkout/checkin on Room Update
 ;
 ;  Modifications - AU - 2023-08-24 - 50.0.30.0
 ;	* Added MaidID support to Minibar events
@@ -186,6 +189,7 @@ define s_UseMillipence
 define s_PassthroughMode
 define s_Heartbeat
 define s_AutoCOS
+define s_CheckoutInOnUpdate
 ;
 define v_ACKRetries
 define v_FieldID
@@ -315,6 +319,9 @@ Assign s_NoPostCOS "FALSE"
 
 // OPT: Set whether we want to create automatic COS events (Unbar on checkin, Bar on checkout)
 Assign s_AutoCOS "FALSE"
+
+// OPT: Set whether we want to create Checkout/Checkin messages instead of Room Update
+Assign s_CheckoutInOnUpdate "FALSE"
 
 // OPT: Set this to TRUE if we are not going to keep retrying
 Assign s_NotGoingToRetry "TRUE"
@@ -2182,7 +2189,12 @@ Return
 
 :HandleGC_RoomUpdate
 
-	CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)" "$(in_Credential)"
+	if "$(s_CheckoutInOnUpdate)" NE "TRUE"
+		CreateRoomUpdate "$(in_Room)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_Reservation)" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestGroup)" "$(in_Credential)"
+	if "$(s_CheckoutInOnUpdate)" EQ "TRUE"
+		CreateCheckOut "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_SwapFlag)"
+	if "$(s_CheckoutInOnUpdate)" EQ "TRUE"
+		CreateCheckIn "$(in_Room)" "$(in_Reservation)" "" "$(in_LangCode)" "$(in_GuestName)" "" "$(in_GuestTitle)" "$(in_VIP)" "TRUE" "$(in_Cfg0)" "$(in_Cfg1)" "$(in_Cfg2)" "$(in_Cfg3)" "$(in_Cfg4)" "$(in_Cfg5)" "$(in_Cfg6)" "$(in_Cfg7)" "$(in_Cfg8)" "$(in_Cfg9)" "$(in_SwapFlag)" "$(in_GuestArrival)" "$(in_GuestDeparture)" "$(in_NoPost)" "" "" "" "" "" "" "" "" "$(in_VideoRights)" "$(in_TVRights)" "$(in_MinibarRights)" "$(in_GuestFirstName)" "$(in_GuestID)" "$(in_GuestGroup)" "$(in_Credential)"
 
 	if "$(in_COS)" EQ ""
 		Goto HandleGC_RoomUpdate_SkipCOS
