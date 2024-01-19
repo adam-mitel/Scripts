@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.1.0
+; Script Version: 50.0.2.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for emulating an SV8100 Interface.
@@ -7,6 +7,9 @@
 ;  Note: This interface does not support Reservation Numbers
 ;
 ;                                                              AU-20141015
+;
+;  Modifications - AU - 2024-01-19 - 50.0.2.0
+;	* Resolved issue with guest names
 ;
 ; ************************************************************************
 ;                     Copyright © 2013, TigerTMS Ltd.                     
@@ -572,8 +575,6 @@ Return
 ;  HandleRecords
 ;    These labels are called when we need to handle an incoming record
 :HandleCHK
-
-	Assign in_Name "$(in_Extension) Occupied Room"
 
 	if "$(in_Status)" EQ "0"
 		CreateCheckout "$(in_Extension)"
