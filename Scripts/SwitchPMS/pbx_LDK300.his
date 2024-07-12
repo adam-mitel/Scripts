@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.4.0
+; Script Version: 50.0.5.0
 ; ************************************************************************
 ;  This is the HI configuration script for interfacing to an LDK 300
 ;  exchange.
@@ -15,6 +15,9 @@
 ;
 ;  Created:                                                    pjh-140102
 ;  Updated:                                                    pjh-210102
+;
+;  Modifications - AU - 2024-04-25 - 50.0.5.0
+;	* Added support to enter a blank password if required
 ;
 ;  Modifications - AU - 2021-07-01 - 50.0.4.0
 ;	* Updated to support ERR from PBX
@@ -379,6 +382,13 @@ Exit
 :CheckIncoming_FinRead
 
 	Echo Rx: $(ReceivedRec)
+
+//	Press Enter if required
+	ContainsStr "Welcome to IPKTS system. Press enter" "$(ReceivedRec)" "FALSE"
+	if "$(_G_RESULT)" EQ "TRUE"
+		Send <#13>
+	if "$(_G_RESULT)" EQ "TRUE"
+		Echo Tx: <#13>
 
 //	Test if it is a Call Record
 	if "<ReceivedRec:TEXT:2:LJ,SP>" NE "<#47><#47>"

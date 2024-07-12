@@ -8,6 +8,9 @@
 ;
 ;                                                              AU-20131017
 ;
+;  Modifications - AU - 2024-04-16 - 50.0.6.0
+;	* Changed format for incoming Room Status as per version R2.3.12
+;
 ;  Modifications - AU - 2023-04-17 - 50.0.5.0
 ;	* Changed incoming Wakeup command format (P records)
 ;
@@ -865,7 +868,7 @@ Goto CheckIncoming
 ;   Setup the expected format for receiving a C record (Room Status)
 :CRECORD
 
-	AssignAsIs _G_IN_RECORDFORMAT "<#2>C<in_Extn:TEXT:8:RJ,SP><in_RSMaidID:TEXT:4:RJ,SP><in_RSStatus:TEXT:1:LJ,SP><in_BCC:TEXT:2:RJ,ZP><#3>"
+	AssignAsIs _G_IN_RECORDFORMAT "<#2>C<in_Extn:TEXT:8:RJ,SP><in_RSStatus:TEXT:1:LJ,SP><in_RSMaidID:TEXT:3:RJ,SP><in_BCC:TEXT:2:RJ,ZP><#3>"
 
 Return
 ; ************************************************************************

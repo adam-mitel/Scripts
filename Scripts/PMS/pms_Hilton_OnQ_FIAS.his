@@ -1,12 +1,15 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.5.0
+; Script Version: 50.0.6.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol.
 ;
 ;							      pjh-20041216
 ;
-;  Modifications - AU - 15/03/2015 - 50.0.5.0
+;  Modifications - AU - 2024-02-07 - 50.0.6.0
+;	* Added Generic Passthrough Call Records coming from emu_FIAS
+;
+;  Modifications - AU - 2015-03-15 - 50.0.5.0
 ;	* Added option to use Millipence for posting for countries with high
 ;	  currency values
 ;	* Modified Call Posting to remove PCT
@@ -17,19 +20,19 @@
 ;	   - SO4 – Telephone - International
 ;	   - SO5 – Telephone - Mobile
 ;
-;  Modifications - AU - 10/08/2014 - 50.0.4.0
+;  Modifications - AU - 2014-08-10 - 50.0.4.0
 ;	* Removed link records for Wakeup records as OnQ does not support them
 ;
-;  Modifications - AU - 10/08/2014 - 50.0.3.0
+;  Modifications - AU - 2014-08-10 - 50.0.3.0
 ;	* Modified incoming records to support Guest Group
 ;	* Added GG back in to GI and GC link records
 ;
-;  Modifications - AU - 10/08/2014 - 50.0.2.0
+;  Modifications - AU - 2014-08-10 - 50.0.2.0
 ;	* Modified HandleLinkStart so that we reset our LinkAlive status to FALSE
 ;	* Modified ReceiveRecord to allow for receiving an ETX instead of a pipe
 ;	  at the end of an incoming record, primarily received by IDS
 ;
-;  Modifications - AU - 17/10/2013 - 50.0.1.0
+;  Modifications - AU - 2013-10-17 - 50.0.1.0
 ;	* Updated to utilise V50 specific features
 ;	* Changed Database Swap commands from using DND to GenericPassthrough
 ;	* Modified CheckIncoming so we don't echo if _PORTCHARS is an ETX
@@ -1091,8 +1094,14 @@ Goto HandleOKAndExit
 ;   Passthrough event to send.
 :GenericPassthrough
 
-if "$(_EV_GPTMSGTYPE)" NE "DatabaseSwap"
-	Goto IgnoreRecord
+if "$(_EV_GPTMSGTYPE)" EQ "DatabaseSwap"
+	Goto GenericPassthrough_DatabaseSwap
+if "$(_EV_GPTMSGTYPE)" EQ "GenericPassthroughCallRecord"
+	Goto GenericPassthrough_CallRecord
+
+Goto IgnoreRecord
+
+:GenericPassthrough_DatabaseSwap
 
 if "$(_EV_GPTCFGFIELD_1)" NE "Request"
 	Goto IgnoreRecord
@@ -1112,6 +1121,102 @@ if "$(s_Connection)" EQ "IP"
 Call SendRecord
 
 Goto HandleOKAndExit
+
+:GenericPassthrough_CallRecord
+
+// If our link is not up then we're waiting for a Link Alive (LA) message.
+if "$(f_LinkAlive)" NE "TRUE"
+	Goto RestartPort
+
+Assign SalesOutlet "3"
+if "<_EV_GPTCFGFIELD_7:TEXT:1:LJ,SP>" EQ "F"
+	Assign SalesOutlet "1"
+if "<_EV_GPTCFGFIELD_7:TEXT:1:LJ,SP>" EQ "L"
+	Assign SalesOutlet "2"
+if "<_EV_GPTCFGFIELD_7:TEXT:1:LJ,SP>" EQ "N"
+	Assign SalesOutlet "3"
+if "<_EV_GPTCFGFIELD_7:TEXT:1:LJ,SP>" EQ "I"
+	Assign SalesOutlet "4"
+if "<_EV_GPTCFGFIELD_7:TEXT:1:LJ,SP>" EQ "M"
+	Assign SalesOutlet "5"
+
+if "$(s_UseMillipence)" EQ "TRUE"
+	Assign CallCharge "$(_EV_CALLCHARGEMILLIPENCE)"
+if "$(s_UseMillipence)" NE "TRUE"
+	Assign CallCharge "$(_EV_CALLCHARGEPENCE)"
+
+Echo If: GPT Guest Call Record Info - Room: $(_EV_ROOMNUMBER) - Date: $(_EV_GPTCFGFIELD_1) - Time: $(_EV_GPTCFGFIELD_2) - ID: $(_EV_GPTCFGFIELD_6)
+
+Assign SendRec "PS|DA$(_EV_GPTCFGFIELD_1)|TI$(_EV_GPTCFGFIELD_2)|RN$(_EV_ROOMNUMBER)|P#$(_EV_GPTCFGFIELD_6)|PTC|DD$(_EV_GPTCFGFIELD_4)|DU$(_EV_GPTCFGFIELD_3)|TA$(_EV_GPTCFGFIELD_5)|WS1|SO$(SalesOutlet)|<#3>"
+if "$(s_Connection)" NE "IP"
+	GenerateBCCChar "" "$(SendRec)"
+if "$(s_Connection)" NE "IP"
+	Assign SendRec "<#2>$(SendRec)$(_G_BCC)"
+if "$(s_Connection)" EQ "IP"
+	Assign SendRec "<#2>$(SendRec)"
+
+StartWaittimer $(s_HowLongToWait)
+
+Assign f_WaitingForPostAnswer "TRUE"
+Assign f_GotPostAnswer "FALSE"
+
+Call SendRecord
+
+:GPTCR_WaitForAnswer
+
+Call CheckIncoming
+
+if "$(_WAITTIMEEXPIRED)" EQ "TRUE"
+	Goto GPTCR_Timeout
+
+if "$(f_GotPostAnswer)" EQ "TRUE"
+	Goto GPTCR_GotAnswer
+
+Sleep 100
+
+Goto GPTCR_WaitForAnswer
+
+:GPTCR_GotAnswer
+
+// Reset flags.
+Assign f_WaitingForPostAnswer "FALSE"
+Assign f_GotPostAnswer "FALSE"
+
+// Check if the Posting was successful
+
+if "$(in_AnswerStatus)" EQ "OK"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "UR"
+	Echo Db: The PS record was refused.  Skipping the event.
+if "$(in_AnswerStatus)" EQ "UR"
+	Goto HandleOKAndExit
+
+if "$(in_AnswerStatus)" EQ "RY"
+	Echo Db: PMS requested we retry the PS record.  Retrying in 5 seconds.
+if "$(in_AnswerStatus)" EQ "RY"
+	Sleep 5000
+if "$(in_AnswerStatus)" EQ "RY"
+	Goto CallRecord
+
+if "$(in_AnswerStatus)" EQ "NA"
+	Echo Db: PMS is currently running a Night Audit.  Retrying the PS record in 15 seconds.
+if "$(in_AnswerStatus)" EQ "NA"
+	Sleep 15000
+if "$(in_AnswerStatus)" EQ "NA"
+	Goto CallRecord
+
+Echo Db: Unrecognised Answer Status: "$(in_AnswerStatus)"
+Goto HandleOKAndExit
+
+:GPTCR_Timeout
+
+Echo Er: Timeout waiting for Posting answer...
+
+if "$(s_NotGoingToRetry)" EQ "TRUE"
+	Goto HandleOKAndExit
+
+Exit
 ; ************************************************************************
 
 

@@ -1,10 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.7.0
+; Script Version: 50.0.8.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to any FIAS client.
 ;
 ;                                                             AU-20100201
+;
+;  Modifications - AU - 2024-02-07 - 50.0.8.0
+;	* Added support for CS records in GI and GC
+;	* Added option to process calls (identified by DD record) as GPT records
 ;
 ;  Modifications - AU - 2019-06-24 - 50.0.7.0
 ;	* Added Date formatting for GA and GD fields
@@ -86,6 +90,7 @@ define s_PassthroughMode
 define s_TransferCheckoutCheckin
 define s_ExtensionFacilities
 define s_ExtensionFacilityName
+define s_ProcessCallsAsGPT
 ;
 define s_GI
 define s_GO
@@ -116,6 +121,7 @@ define s_GIGV
 define s_GIGL
 define s_GIGG
 define s_GINP
+define s_GICS
 define s_GITV
 define s_GIVR
 define s_GIMR
@@ -159,6 +165,7 @@ define s_GCGV
 define s_GCGL
 define s_GCGG
 define s_GCNP
+define s_GCCS
 define s_GCTV
 define s_GCVR
 define s_GCMR
@@ -287,6 +294,9 @@ define s_XTMT
 
 //	OPT: If the above is TRUE, enter the Facility name to filter events by
 	Assign s_ExtensionFacilityName "Suite"
+
+//	OPT: Set whether we want to process call records as Generic Passthrough events
+	Assign s_ProcessCallsAsGPT "NO"
 
 	if "$(f_Connection)" EQ "IP"
 		Exit
@@ -871,8 +881,14 @@ Goto HandleOKAndExit
 
 	Assign SendRec "$(SendRec)NP$(_EV_CICFGFIELD_10)|"
 
-
 :CI_SkipNoPost
+
+	if "$(s_GICS)" NE "TRUE"
+		Goto CI_SkipCS
+
+	Assign SendRec "$(SendRec)CS3|"
+
+:CI_SkipCS
 
 	if "$(s_GITV)" NE "TRUE"
 		Goto CI_SkipTVRights
@@ -1141,9 +1157,9 @@ Goto HandleOKAndExit
 		Call ExtensionFacilities
 
 	if "$(s_RE)" NE "TRUE"
-		Goto IgnoreRecord
+		Goto COS_CheckGCCS
 	if "$(s_RECS)" NE "TRUE"
-		Goto IgnoreRecord
+		Goto COS_CheckGCCS
 
 //	We should be sending RE CS events - Build the record
 	Assign SendRec "RE|"
@@ -1169,6 +1185,73 @@ Goto HandleOKAndExit
 		Assign WorkVal "3"
 
 	Assign SendRec "$(SendRec)CS$(WorkVal)|"
+
+	Assign SendRec "$(SendRec)<#3>"
+	Call HandleLRC
+
+	Call SendRecord
+
+:COS_CheckGCCS
+
+	if "$(s_GC)" NE "TRUE"
+		Goto IgnoreRecord
+	if "$(s_GCCS)" NE "TRUE"
+		Goto IgnoreRecord
+
+//	We should be sending GC events - Build the record
+	Assign SendRec "GC|"
+
+	Call GetDateTime
+
+	if "$(s_GCDA)" NE "TRUE"
+		Goto COSGC_SkipDate
+
+	Assign SendRec "$(SendRec)DA$(Date)|"
+
+:COSGC_SkipDate
+
+	if "$(s_GCTI)" NE "TRUE"
+		Goto COSGC_SkipTime
+
+	Assign SendRec "$(SendRec)TI$(Time)|"
+
+:COSGC_SkipTime
+
+	if "$(s_GCRN)" NE "TRUE"
+		Goto COSGC_SkipRoomNumber
+
+	Assign SendRec "$(SendRec)RN$(_EV_ROOMNUMBER)|"
+
+:COSGC_SkipRoomNumber
+
+	if "$(s_GCG#)" NE "TRUE"
+		Goto COSGC_SkipReservation
+	if "$(_EV_RESERVATION)" EQ ""
+		Goto COSGC_SkipReservation
+
+	Assign SendRec "$(SendRec)G#$(_EV_RESERVATION)|"
+
+:COSGC_SkipReservation
+
+	if "$(s_GCCS)" NE "TRUE"
+		Goto COSGC_SkipCS
+
+	Assign WorkVal "0"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "3"
+
+	if "$(_EV_COSCOVERAGEPATH)" EQ "0"
+		Assign WorkVal "0"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "1"
+		Assign WorkVal "1"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "2"
+		Assign WorkVal "2"
+	if "$(_EV_COSCOVERAGEPATH)" EQ "3"
+		Assign WorkVal "3"
+
+	Assign SendRec "$(SendRec)CS$(WorkVal)|"
+
+:COSGC_SkipCS
 
 	Assign SendRec "$(SendRec)<#3>"
 	Call HandleLRC
@@ -1327,8 +1410,18 @@ Goto HandleOKAndExit
 
 	Assign SendRec "$(SendRec)NP$(_EV_RUCFGFIELD_10)|"
 
-
 :RU_SkipNoPost
+
+	if "$(s_CSCS)" NE "TRUE"
+		Goto RU_SkipCS
+
+	Assign WorkVal "0"
+	if "$(_EV_ALLOWOUTGOING)" EQ "1"
+		Assign WorkVal "3"
+
+	Assign SendRec "$(SendRec)CS$(WorkVal)|"
+
+:RU_SkipCS
 
 	if "$(s_GCTV)" NE "TRUE"
 		Goto RU_SkipTVRights
@@ -2955,6 +3048,11 @@ Return
 ;   in the ReceiveRecord label.
 :HandlePS
 
+	if "$(s_ProcessCallsAsGPT)" EQ "YES"
+		Goto HandlePS_CheckCallGPT
+
+:HandlePS_Process
+
 	if "$(in_PostingType)" EQ "T"
 		Call ParseTime
 	if "$(in_PostingType)" EQ "T"
@@ -3026,6 +3124,15 @@ Return
 
 	if "$(in_PostingType)" NE "T"
 		CreateMinibar "$(in_Room)" "$(in_UserID)" "$(in_Item)" "$(in_Quantity)" "$(in_TotalAmount)" "$(in_ClearText)"
+
+	Goto HandlePS_SendPA
+
+:HandlePS_CheckCallGPT
+
+	if "$(in_DialledDigits)" EQ ""
+		Goto HandlePS_Process
+
+	CreateGenericPassThrough "$(in_Room)" "GenericPassthroughCallRecord" "$(in_Date)" "$(in_Time)" "$(in_Duration)" "$(in_DialledDigits)" "$(in_TotalAmount)" "$(in_PostID)" "$(in_ClearText)"
 
 	Goto HandlePS_SendPA
 
@@ -3482,6 +3589,8 @@ Return
 		Assign s_GIGG "TRUE"
 	if "$(v_LRField)" EQ "NP"
 		Assign s_GINP "TRUE"
+	if "$(v_LRField)" EQ "CS"
+		Assign s_GICS "TRUE"
 	if "$(v_LRField)" EQ "TV"
 		Assign s_GITV "TRUE"
 	if "$(v_LRField)" EQ "VR"
@@ -3588,6 +3697,8 @@ Return
 		Assign s_GCGG "TRUE"
 	if "$(v_LRField)" EQ "NP"
 		Assign s_GCNP "TRUE"
+	if "$(v_LRField)" EQ "CS"
+		Assign s_GCCS "TRUE"
 	if "$(v_LRField)" EQ "TV"
 		Assign s_GCTV "TRUE"
 	if "$(v_LRField)" EQ "VR"
@@ -3958,6 +4069,7 @@ Return
 	Assign s_GIGL "FALSE"
 	Assign s_GIGG "FALSE"
 	Assign s_GINP "FALSE"
+	Assign s_GICS "FALSE"
 	Assign s_GITV "FALSE"
 	Assign s_GIVR "FALSE"
 	Assign s_GIMR "FALSE"
@@ -4003,6 +4115,7 @@ Return
 	Assign s_GCGL "FALSE"
 	Assign s_GCGG "FALSE"
 	Assign s_GCNP "FALSE"
+	Assign s_GCCS "FALSE"
 	Assign s_GCTV "FALSE"
 	Assign s_GCVR "FALSE"
 	Assign s_GCMR "FALSE"
