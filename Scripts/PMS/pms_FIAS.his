@@ -1,11 +1,14 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.32.0
+; Script Version: 50.0.33.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to a FIAS Protocol
 ;  emulating a Telephone Management System interface.
 ;
 ;							      pjh-20041216
+;
+;  Modifications - AU - 2024-09-11 - 50.0.33.0
+;	* Changes to when we receive a Link End with a Serial connection
 ;
 ;  Modifications - AU - 2024-07-12 - 50.0.32.0
 ;	* Added option to do checkout/checkin on Room Transfer
@@ -2996,6 +2999,9 @@ Return
 ;	Called when we receive a Link End (LE) from the PMS.
 :HandleLinkStop
 
+	Assign f_LinkAlive "FALSE"
+	Assign f_SentLinkRecords "FALSE"
+
 	QueryPortOpen
 	if "$(_G_RESULT)" NE "TRUE"
 		Return
@@ -3012,8 +3018,8 @@ Return
 
 	Call SendRecord
 
-	Assign f_LinkAlive "FALSE"
-	Assign f_SentLinkRecords "FALSE"
+	if "$(s_Connection) NE "IP"
+		Goto PORT_OPENED
 
 Return
 ; ************************************************************************

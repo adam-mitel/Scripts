@@ -30,7 +30,7 @@
 ;	* Updated to utilise V50 specific features
 ;
 ; ************************************************************************
-;                     Copyright © 2013, TigerTMS Ltd.                     
+;                     Copyright   2013, TigerTMS Ltd.                     
 ; ************************************************************************
 
 ; Configuration Variables
@@ -314,7 +314,29 @@ goto HandleOKAndExit
 ; ************************************************************************
 :RoomStatus
 
-goto IgnoreRecord
+  // OPT: If for some reason we do not wish to send room status
+  //      to the PBX then uncomment the following line
+  Goto IgnoreRecord
+
+  ; Create the record.
+  Assign SendRec "<#2>1!L61133<_EV_EXTNNUMBER:TEXT:6:LJ,SP>  <_EV_RSCODE:TEXT:2:RJ,ZP><#3>"
+  
+  ; Set up header for record.
+  GetNextAutoIncNumber SeqNo
+  
+  Assign WorkVal $(_G_RESULT)
+  
+  if "$(LastSeqNo)" EQ "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:2:RJ,ZP>"
+  if "$(LastSeqNo)" NE "99"
+    Assign fLastSeqNoSent "<WorkVal:TEXT:3:RJ,ZP>"
+	
+  Assign SendRec "1$(EquipNo)$(fLastSeqNoSent)$(SendRec)"
+  
+  ; Send the Record
+  Call SendRecord
+  
+goto HandleOKAndExit
 ; ************************************************************************
 
 ; ************************************************************************

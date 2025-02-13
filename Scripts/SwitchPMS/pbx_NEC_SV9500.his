@@ -1,5 +1,5 @@
 ; Coded For: 6.0.0.0
-; Script Version: 50.0.10.0
+; Script Version: 50.0.11.0
 ; ************************************************************************
 ;
 ;  This is the HI configuration script for interfacing to the following:
@@ -9,6 +9,9 @@
 ;	- NEC SV9500
 ;
 ;                                                              AU-20100201
+;
+;  Modifications - AU - 2022-02-16 - 50.0.11.0
+;	* Added option to set a checkout name
 ;
 ;  Modifications - AU - 2022-02-16 - 50.0.10.0
 ;	* Added support for Maid Status Answer Back record type 51
@@ -92,6 +95,7 @@ define in_TextID
 define in_WakeupTime
 define in_WakeupResult
 ;
+define s_CheckoutName
 define s_LanguageBeforeName
 define s_MessageWaiting
 define s_Minibar
@@ -117,6 +121,9 @@ define s_Wakeups
 //	OPT: Set to "ON" or "OFF" depending on whether we want to send
 //	     Wakeup commands.
 	Assign s_Wakeups "OFF"
+
+//	OPT: Set a name if we need to send a name on checkout
+	Assign s_CheckoutName ""
 
 //	OPT: Set this value to the Equipment number configured on the PBX
 //	     for the PMS. This is normally fixed to "0" so should not need
@@ -299,6 +306,21 @@ Goto HandleOKAndExit
 
 	Call SendRecord
 
+//	Send a checkout name if enabled
+	if "$(s_CheckoutName)" EQ ""
+		Goto Checkout_Complete
+
+//	Build the Base Record
+	Assign SendRec "<#2>1!L56461<_EV_EXTNNUMBER:TEXT:6:LJ,SP>      10100<s_CheckoutName:TEXT:16:AN,LJ,SP>        <#3>"
+
+//	Build the Complete Record
+	GetNextAutoIncNumber SeqNo
+	Assign SendRec "1$(EquipNo)<_G_RESULT:TEXT:3:RJ,ZP>$(SendRec)"
+
+	Call SendRecord
+
+:Checkout_Complete
+
 Goto HandleOKAndExit
 ; ************************************************************************
 
@@ -376,6 +398,19 @@ Goto HandleOKAndExit
 
 //	Build the Base Record
 	Assign SendRec "<#2>1!L56142<_EV_EXTNNUMBER:TEXT:6:LJ,SP>030<#3>"
+
+//	Build the Complete Record
+	GetNextAutoIncNumber SeqNo
+	Assign SendRec "1$(EquipNo)<_G_RESULT:TEXT:3:RJ,ZP>$(SendRec)"
+
+	Call SendRecord
+
+//	Send a checkout name if enabled
+	if "$(s_CheckoutName)" EQ ""
+		Goto RoomTransfer_SkipCheckout
+
+//	Build the Base Record
+	Assign SendRec "<#2>1!L56461<_EV_EXTNNUMBER:TEXT:6:LJ,SP>      10100<s_CheckoutName:TEXT:16:AN,LJ,SP>        <#3>"
 
 //	Build the Complete Record
 	GetNextAutoIncNumber SeqNo
